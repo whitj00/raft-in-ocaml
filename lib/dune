@@ -1,0 +1,3 @@
+(library
+ (name raft)
+ (libraries core async))
