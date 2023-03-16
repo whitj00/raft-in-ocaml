@@ -2,4 +2,4 @@
  (name raft)
  (libraries core async)
  (preprocess
-  (pps ppx_let ppx_deriving_rpc ppx_sexp_conv ppx_fields_conv)))
+  (pps ppx_let ppx_deriving_rpc ppx_sexp_conv ppx_fields_conv ppx_jane)))
