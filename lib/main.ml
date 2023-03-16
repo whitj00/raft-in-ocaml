@@ -24,15 +24,14 @@ let start_server (writer : Remote_call.t Pipe.Writer.t) port =
 let rec read_from_pipe pipe_reader =
   let%bind response = Pipe.read pipe_reader in
   match response with
-  | `Eof ->
-      read_from_pipe pipe_reader
+  | `Eof -> read_from_pipe pipe_reader
   | `Ok { Remote_call.event; from } ->
       Deferred.return { Remote_call.event; from }
 
 let get_election_timeout state =
   let election_timer = State.election_timeout state in
   let time_since_last_election =
-    Time.diff (State.last_election state) (Time.now ())
+    Time.diff (Time.now ()) (State.last_election state)
   in
   Time.Span.(election_timer - time_since_last_election)
 
@@ -50,47 +49,32 @@ let get_heartbeat_timeout state =
       last_heartbeat,
       heartbeat_timer )
 
-let get_next_event pipe_reader state =
-  let peer_type = State.peer_type state in
-  let election_timeout_deferred () =
-    match peer_type with
-    | Follower _ | Candidate _ ->
-        print_endline "Election timeout";
-        get_election_timeout state |> after >>| fun () ->
-        let event = Event.ElectionTimeout in
-        let from = State.self state in
-        { Remote_call.event; from }
-    | _ -> Deferred.never ()
+let rec get_next_event pipe_reader state =
+  let%bind () = Clock.after (Time.Span.of_sec 0.5) in
+  let election_timeout = get_election_timeout state in
+  let heartbeat_timeout, start, span = get_heartbeat_timeout state in
+  let uses_heartbeat =
+    match State.peer_type state with
+    | Leader _ -> true
+    | Candidate _ -> false
+    | Follower _ -> false
   in
-  let _heartbeat_timeout_deferred () =
-    let timeout, start, span = get_heartbeat_timeout state in
-    let%map () = after timeout in
-    printf "Heartbeat timeout: %s\n" (Time.Span.to_string span);
+  if (not uses_heartbeat) && Time.Span.(election_timeout < Time.Span.of_sec 0.)
+  then
+    let event = Event.ElectionTimeout in
+    let from = State.self state in
+    Deferred.return { Remote_call.event; from }
+  else if uses_heartbeat && Time.Span.(heartbeat_timeout < Time.Span.of_sec 0.)
+  then
     let event = Event.HeartbeatTimeout (start, span) in
     let from = State.self state in
-    { Remote_call.event; from }
-  in
-  let incoming_events_deferred () =
+    Deferred.return { Remote_call.event; from }
+  else if Pipe.length pipe_reader > 0 then
     let%bind response = read_from_pipe pipe_reader in
-    print_endline "Recieved remote_call from pipe";
-    print_endline (Remote_call.to_string response);
     Deferred.return response
-  in
-  let%bind choice =
-    Deferred.choose
-      [
-        Deferred.choice (incoming_events_deferred ()) Fn.id;
-        Deferred.choice (election_timeout_deferred ()) Fn.id;
-       (* Deferred.choice (heartbeat_timeout_deferred ()) Fn.id; *)
-      ]
-  in
-  print_endline "Chose event";
-  print_endline (Remote_call.to_string choice);
-  Deferred.return choice
+  else get_next_event pipe_reader state
 
 let handle_event peer state event =
-  print_endline "Handling event";
-  print_endline (Event.to_string event);
   match (event : Event.t) with
   | RequestVoteResponse response ->
       handle_request_vote_response peer state response
@@ -112,8 +96,13 @@ let rec event_loop event_reader state =
       print_endline (Error.to_string_hum error);
       Deferred.unit
 
-let main port peer_port () =
-  let peers = [ Peer.create ~host:"127.0.0.1" ~port:peer_port ] in
+let main port peer_port_1 peer_port_2 () =
+  let peers =
+    [
+      Peer.create ~host:"127.0.0.1" ~port:peer_port_1;
+      Peer.create ~host:"127.0.0.1" ~port:peer_port_2;
+    ]
+  in
   let _peers = [] in
   let server_state = State.create ~peers port in
   let event_pipe = Pipe.create () in
