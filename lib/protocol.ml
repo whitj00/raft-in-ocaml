@@ -2,10 +2,23 @@ open! Core
 open Async
 
 module Peer = struct
-  type t = { host : string; port : int } [@@deriving fields, sexp, bin_io]
+  type t = {
+    host : string;
+    port : int;
+    conn : Persistent_connection.Rpc.t option;
+  }
+  [@@deriving fields]
 
-  let create = Fields.create
-  let self = { host = "127.0.0.1"; port = 8080 }
+  let create ~host ~port =
+    let conn =
+      Some
+        (Persistent_connection.Rpc.create' ~server_name:"RPC server" (fun () ->
+             return (Ok { Host_and_port.host; port })))
+    in
+    Fields.create ~host ~port ~conn
+
+  let to_host_and_port t = Host_and_port.create ~host:t.host ~port:t.port
+  let self = { host = "127.0.0.1"; port = 8080; conn = None }
   let equal t1 t2 = String.equal t1.host t2.host && t1.port = t2.port
   let to_string t = sprintf "%s:%d" t.host t.port
 end
@@ -171,7 +184,7 @@ module Event = struct
 end
 
 module Remote_call = struct
-  type t = { event : Event.t; from : Peer.t } [@@deriving bin_io, sexp]
+  type t = { event : Event.t; from : Host_and_port.t } [@@deriving bin_io, sexp]
 
   let to_string t = Sexp.to_string (sexp_of_t t)
 end
@@ -183,8 +196,12 @@ let raft_rpc =
 let send_event event peer =
   let host = Peer.host peer in
   let port = Peer.port peer in
+  let conn =
+    match Peer.conn peer with
+    | Some conn -> conn
+    | None -> failwith "conn not set"
+  in
   (* Use async_rpc to send event *)
-  let where_to_connect = Tcp.Where_to_connect.of_host_and_port { host; port } in
   let dispatch connection =
     let%bind response = Rpc.Rpc.dispatch raft_rpc connection event in
     match response with
@@ -194,11 +211,13 @@ let send_event event peer =
     | Ok () -> return ()
   in
   don't_wait_for
-    (let%bind result = Rpc.Connection.with_client where_to_connect dispatch in
-     match result with
+    (let%bind conn_res =
+       Persistent_connection.Rpc.connected_or_failed_to_connect conn
+     in
+     match conn_res with
      | Error _ ->
          printf "connerr: connection failed to peer %s:%d\n" host port |> return
-     | Ok () -> return ())
+     | Ok connection -> dispatch connection)
 
 let convert_to_follower state =
   match State.peer_type state with
@@ -229,7 +248,7 @@ let send_heartbeat state =
       ~leader_commit
   in
   let event = heartbeat |> Event.AppendEntriesCall in
-  let from = State.self state in
+  let from = State.self state |> Peer.to_host_and_port in
   let () = List.iter peers ~f:(send_event { event; from }) in
   State.reset_heartbeat_timer state
 
@@ -304,7 +323,7 @@ let convert_to_candidate state =
       Request_call.create ~term ~last_log_index ~last_log_term
       |> Event.RequestVoteCall
     in
-    let from = State.self new_state in
+    let from = State.self state |> Peer.to_host_and_port in
     let request : Remote_call.t = { event; from } in
     printf "%d: Requesting votes from peers\n" term;
     List.iter peers ~f:(send_event request)
@@ -341,7 +360,7 @@ let handle_request_vote peer state call =
         (response, state)
   in
   let event = response |> Event.RequestVoteResponse in
-  let from = State.self state in
+  let from = State.self state |> Peer.to_host_and_port in
   let () = send_event { event; from } peer in
   Ok state
 
@@ -385,7 +404,7 @@ let handle_append_entries peer state call =
             (response, state)
       in
       let event = response |> Event.AppendEntriesResponse in
-      let from = State.self state in
+      let from = State.self state |> Peer.to_host_and_port in
       let () = send_event { event; from } peer in
       let state = State.reset_election_timer state in
       Ok state

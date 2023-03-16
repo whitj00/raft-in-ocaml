@@ -59,28 +59,40 @@ let rec get_next_event pipe_reader state =
   if (not uses_heartbeat) && Time.Span.(election_timeout < Time.Span.of_sec 0.)
   then
     let event = Event.ElectionTimeout in
-    let from = State.self state in
+    let from = State.self state |> Peer.to_host_and_port in
     Deferred.return { Remote_call.event; from }
   else if uses_heartbeat && Time.Span.(heartbeat_timeout < Time.Span.of_sec 0.)
   then
     let event = Event.HeartbeatTimeout in
-    let from = State.self state in
+    let from = State.self state |> Peer.to_host_and_port in
     Deferred.return { Remote_call.event; from }
   else if Pipe.length pipe_reader > 0 then
     let%bind response = read_from_pipe pipe_reader in
     Deferred.return response
   else get_next_event pipe_reader state
 
-let handle_event peer state event =
+
+let handle_event host_and_port state event =
+  let get_peer () =
+    let peers = State.peers state in
+    let peer_opt =
+      List.find peers ~f:(fun peer ->
+          Host_and_port.equal (Peer.to_host_and_port peer) host_and_port)
+    in
+    match peer_opt with None -> failwith "Peer not found" | Some peer -> peer
+
+  in
   match (event : Event.t) with
-  | RequestVoteResponse response ->
-      handle_request_vote_response peer state response
-  | AppendEntriesResponse response ->
-      handle_append_entries_response peer state response
-  | AppendEntriesCall call -> handle_append_entries peer state call
-  | RequestVoteCall call -> handle_request_vote peer state call
   | Event.ElectionTimeout -> handle_election_timeout state
   | HeartbeatTimeout -> handle_heartbeat_timeout state
+  | RequestVoteResponse response ->
+      handle_request_vote_response (get_peer ()) state response
+  | AppendEntriesResponse response ->
+      handle_append_entries_response (get_peer ()) state response
+  | AppendEntriesCall call ->
+      handle_append_entries (get_peer ()) state call
+  | RequestVoteCall call ->
+      handle_request_vote (get_peer ()) state call
 
 let rec event_loop event_reader state =
   let%bind { Remote_call.from = peer; event } =
