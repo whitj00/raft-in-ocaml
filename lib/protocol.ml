@@ -127,9 +127,9 @@ module State = struct
   }
   [@@deriving fields]
 
-  let create_heartbeat_timer () = Time.Span.of_sec 3.
+  let create_heartbeat_timer () = Time.Span.of_sec 0.75
   let reset_heartbeat_timer state = { state with last_hearbeat = Time.now () }
-  let get_election_timeout () = Time.Span.of_sec (Random.float_range 7. 12.5)
+  let get_election_timeout () = Time.Span.of_sec (Random.float_range 1.5 6.)
 
   let reset_election_timer t =
     {
@@ -164,7 +164,7 @@ module Event = struct
     | AppendEntriesCall of Append_call.t
     | AppendEntriesResponse of Append_response.t
     | ElectionTimeout
-    | HeartbeatTimeout of (Time_unix.t * Time.Span.t)
+    | HeartbeatTimeout
   [@@deriving bin_io, sexp]
 
   let to_string t = Sexp.to_string (sexp_of_t t)
@@ -199,29 +199,6 @@ let send_event event peer =
      | Error _ ->
          printf "connerr: connection failed to peer %s:%d\n" host port |> return
      | Ok () -> return ())
-
-let append_entries state call =
-  let open Or_error.Let_syntax in
-  let current_term = State.current_term state in
-  let%bind () =
-    if Append_call.term call < current_term then return ()
-    else Or_error.errorf "Term is too old"
-  in
-  let%bind () =
-    match List.nth (State.log state) (Append_call.prev_log_index call) with
-    | Some entry ->
-        if entry.term = Append_call.prev_log_term call then return ()
-        else Or_error.errorf "Term mismatch"
-    | None -> Or_error.errorf "No entry at prevLogIndex"
-  in
-  let new_log =
-    List.take (State.log state) (Append_call.prev_log_index call)
-    @ Append_call.entries call
-  in
-  let new_commit_index =
-    min (Append_call.leader_commit call) (List.length new_log)
-  in
-  return { state with log = new_log; commit_index = new_commit_index }
 
 let convert_to_follower state =
   match State.peer_type state with
@@ -335,10 +312,7 @@ let convert_to_candidate state =
   let new_state = convert_if_votes new_state |> State.reset_election_timer in
   new_state
 
-let handle_heartbeat_timeout state start span =
-  printf "%d: Heartbeat timeout start=%s span=%s\n" (State.current_term state)
-    (Time.to_string_utc start)
-    (Time.Span.to_short_string span);
+let handle_heartbeat_timeout state =
   match State.peer_type state with
   | Leader _ -> State.reset_heartbeat_timer state |> send_heartbeat |> Ok
   | Follower _ | Candidate _ -> Ok state
@@ -370,6 +344,29 @@ let handle_request_vote peer state call =
   let from = State.self state in
   let () = send_event { event; from } peer in
   Ok state
+
+let append_entries state call =
+  let open Or_error.Let_syntax in
+  let current_term = State.current_term state in
+  let%bind () =
+    if Append_call.term call < current_term then return ()
+    else Or_error.errorf "Term is too old"
+  in
+  let%bind () =
+    match List.nth (State.log state) (Append_call.prev_log_index call) with
+    | Some entry ->
+        if entry.term = Append_call.prev_log_term call then return ()
+        else Or_error.errorf "Term mismatch"
+    | None -> Or_error.errorf "No entry at prevLogIndex"
+  in
+  let new_log =
+    List.take (State.log state) (Append_call.prev_log_index call)
+    @ Append_call.entries call
+  in
+  let new_commit_index =
+    min (Append_call.leader_commit call) (List.length new_log)
+  in
+  return { state with log = new_log; commit_index = new_commit_index }
 
 let handle_append_entries peer state call =
   let term = Int.max (Append_call.term call) (State.current_term state) in
