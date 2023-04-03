@@ -1,31 +1,18 @@
 open! Core
 open Async
 
-module Peer_index_list = struct
-  type t = (Peer.t * int) list
-
-  let init (peers : Peer.t list) : t = List.map peers ~f:(fun peer -> (peer, 0))
-
-  let update (t : t) peer index : t =
-    List.map t ~f:(fun (p, i) ->
-        if Peer.equal p peer then (p, index) else (p, i))
-end
-
 module Leader_volatile_state = struct
-  type t = { next_index : Peer_index_list.t; match_index : Peer_index_list.t }
+  type t = { next_index : int Peer_db.t; match_index : int Peer_db.t }
   [@@deriving fields]
 
   let init (peers : Peer.t list) : t =
-    {
-      next_index = Peer_index_list.init peers;
-      match_index = Peer_index_list.init peers;
-    }
+    { next_index = Peer_db.init peers; match_index = Peer_db.init peers }
 
   let update_next_index (t : t) peer index : t =
-    { t with next_index = Peer_index_list.update t.next_index peer index }
+    { t with next_index = Peer_db.update t.next_index peer index }
 
   let update_match_index (t : t) peer index : t =
-    { t with match_index = Peer_index_list.update t.match_index peer index }
+    { t with match_index = Peer_db.update t.match_index peer index }
 end
 
 module Candidate_volatile_state = struct
