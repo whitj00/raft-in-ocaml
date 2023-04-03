@@ -84,14 +84,14 @@ let send_event event peer =
          printf "connerr: connection failed to peer %s:%d\n" host port |> return
      | Ok connection -> dispatch connection)
 
-let start_server port =
+let start_server writer port =
+  let implementation =
+    Rpc.Rpc.implement raft_rpc (fun _peer event ->
+        let%bind () = Pipe.write writer event in
+        Deferred.unit)
+  in
   Tcp.Server.create (Tcp.Where_to_listen.of_port port) ~on_handler_error:`Ignore
     (fun remote reader writer ->
-      let implementation =
-        Rpc.Rpc.implement raft_rpc (fun _ remote_call ->
-            let%bind () = Pipe.write writer remote_call in
-            Deferred.unit)
-      in    
       Rpc.Connection.server_with_close reader writer
         ~implementations:
           (Rpc.Implementations.create_exn ~on_unknown_rpc:`Raise
@@ -101,4 +101,4 @@ let start_server port =
           let host = Host_and_port.host host_and_port in
           let port = Host_and_port.port host_and_port in
           Peer.create ~host ~port)
-        ~on_handshake_error:`Ignore
+        ~on_handshake_error:`Ignore)

@@ -1,15 +1,14 @@
 open Core
 open Async
 open Protocol
-
 module Rpc = Raft_rpc
 
 let rec read_from_pipe pipe_reader =
   let%bind response = Pipe.read pipe_reader in
   match response with
   | `Eof -> read_from_pipe pipe_reader
-  | `Ok { Rpc.Remote_call.event; from } ->
-      Deferred.return { Rpc.Remote_call.event; from }
+  | `Ok remote_call ->
+      Deferred.return remote_call
 
 let get_election_timeout state =
   let election_timer = State.election_timeout state in
@@ -74,7 +73,7 @@ let handle_event host_and_port state event =
   | AppendEntriesCall call -> handle_append_entries (get_peer ()) state call
   | RequestVoteCall call -> handle_request_vote (get_peer ()) state call
 
-let rec event_loop event_reader state =
+let rec event_loop (event_reader:Rpc.Remote_call.t Pipe.Reader.t) state =
   let%bind { Rpc.Remote_call.from = peer; event } =
     get_next_event event_reader state
   in
@@ -95,7 +94,8 @@ let main port peer_port_1 peer_port_2 () =
   let _peers = [] in
   let server_state = State.create ~peers port in
   let event_pipe = Pipe.create () in
-  let event_reader, event_writer = event_pipe in
+  let (event_reader, event_writer) : (Rpc.Remote_call.t) Pipe.Reader.t *
+  (Rpc.Remote_call.t) Pipe.Writer.t = event_pipe in
   let%bind _server = Rpc.start_server event_writer port in
   let%bind () = event_loop event_reader server_state in
   Deferred.unit
