@@ -1,36 +1,6 @@
 open! Core
 open Async
 
-module Peer = struct
-  type t = {
-    host : string;
-    port : int;
-    conn : Persistent_connection.Rpc.t option;
-  }
-  [@@deriving fields]
-
-  let create ~host ~port =
-    let conn =
-      Some
-        (Persistent_connection.Rpc.create' ~server_name:"RPC server" (fun () ->
-             return (Ok { Host_and_port.host; port })))
-    in
-    Fields.create ~host ~port ~conn
-
-  let to_host_and_port t = Host_and_port.create ~host:t.host ~port:t.port
-  let self = { host = "127.0.0.1"; port = 8080; conn = None }
-  let equal t1 t2 = String.equal t1.host t2.host && t1.port = t2.port
-  let to_string t = sprintf "%s:%d" t.host t.port
-end
-
-module Command = struct
-  type t = string [@@deriving bin_io, sexp]
-end
-
-module Log_entry = struct
-  type t = { term : int; command : Command.t } [@@deriving fields, bin_io, sexp]
-end
-
 module Peer_index_list = struct
   type t = (Peer.t * int) list
 
@@ -275,7 +245,7 @@ let request_vote peer state call =
   let%bind () =
     match List.nth (State.log state) (Request_call.last_log_index call) with
     | Some entry ->
-        if entry.term = Request_call.last_log_term call then return ()
+        if Log_entry.term entry = Request_call.last_log_term call then return ()
         else Or_error.errorf "Term mismatch"
     | None -> return ()
   in
@@ -374,7 +344,7 @@ let append_entries state call =
   let%bind () =
     match List.nth (State.log state) (Append_call.prev_log_index call) with
     | Some entry ->
-        if entry.term = Append_call.prev_log_term call then return ()
+        if Log_entry.term entry = Append_call.prev_log_term call then return ()
         else Or_error.errorf "Term mismatch"
     | None -> Or_error.errorf "No entry at prevLogIndex"
   in

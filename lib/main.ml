@@ -71,7 +71,6 @@ let rec get_next_event pipe_reader state =
     Deferred.return response
   else get_next_event pipe_reader state
 
-
 let handle_event host_and_port state event =
   let get_peer () =
     let peers = State.peers state in
@@ -80,8 +79,8 @@ let handle_event host_and_port state event =
           Host_and_port.equal (Peer.to_host_and_port peer) host_and_port)
     in
     match peer_opt with None -> failwith "Peer not found" | Some peer -> peer
-
   in
+
   match (event : Event.t) with
   | Event.ElectionTimeout -> handle_election_timeout state
   | HeartbeatTimeout -> handle_heartbeat_timeout state
@@ -89,10 +88,8 @@ let handle_event host_and_port state event =
       handle_request_vote_response (get_peer ()) state response
   | AppendEntriesResponse response ->
       handle_append_entries_response (get_peer ()) state response
-  | AppendEntriesCall call ->
-      handle_append_entries (get_peer ()) state call
-  | RequestVoteCall call ->
-      handle_request_vote (get_peer ()) state call
+  | AppendEntriesCall call -> handle_append_entries (get_peer ()) state call
+  | RequestVoteCall call -> handle_request_vote (get_peer ()) state call
 
 let rec event_loop event_reader state =
   let%bind { Remote_call.from = peer; event } =
