@@ -2,31 +2,14 @@ open Core
 open Async
 open Protocol
 
-let start_server (writer : Remote_call.t Pipe.Writer.t) port =
-  let implementation =
-    Rpc.Rpc.implement raft_rpc (fun _ remote_call ->
-        let%bind () = Pipe.write writer remote_call in
-        Deferred.unit)
-  in
-  Tcp.Server.create (Tcp.Where_to_listen.of_port port) ~on_handler_error:`Ignore
-    (fun remote reader writer ->
-      Rpc.Connection.server_with_close reader writer
-        ~implementations:
-          (Rpc.Implementations.create_exn ~on_unknown_rpc:`Raise
-             ~implementations:[ implementation ])
-        ~connection_state:(fun _ ->
-          let host_and_port = Socket.Address.Inet.to_host_and_port remote in
-          let host = Host_and_port.host host_and_port in
-          let port = Host_and_port.port host_and_port in
-          Peer.create ~host ~port)
-        ~on_handshake_error:`Ignore)
+module Rpc = Raft_rpc
 
 let rec read_from_pipe pipe_reader =
   let%bind response = Pipe.read pipe_reader in
   match response with
   | `Eof -> read_from_pipe pipe_reader
-  | `Ok { Remote_call.event; from } ->
-      Deferred.return { Remote_call.event; from }
+  | `Ok { Rpc.Remote_call.event; from } ->
+      Deferred.return { Rpc.Remote_call.event; from }
 
 let get_election_timeout state =
   let election_timer = State.election_timeout state in
@@ -58,14 +41,14 @@ let rec get_next_event pipe_reader state =
   in
   if (not uses_heartbeat) && Time.Span.(election_timeout < Time.Span.of_sec 0.)
   then
-    let event = Event.ElectionTimeout in
+    let event = Rpc.Event.ElectionTimeout in
     let from = State.self state |> Peer.to_host_and_port in
-    Deferred.return { Remote_call.event; from }
+    Deferred.return { Rpc.Remote_call.event; from }
   else if uses_heartbeat && Time.Span.(heartbeat_timeout < Time.Span.of_sec 0.)
   then
-    let event = Event.HeartbeatTimeout in
+    let event = Rpc.Event.HeartbeatTimeout in
     let from = State.self state |> Peer.to_host_and_port in
-    Deferred.return { Remote_call.event; from }
+    Deferred.return { Rpc.Remote_call.event; from }
   else if Pipe.length pipe_reader > 0 then
     let%bind response = read_from_pipe pipe_reader in
     Deferred.return response
@@ -81,8 +64,8 @@ let handle_event host_and_port state event =
     match peer_opt with None -> failwith "Peer not found" | Some peer -> peer
   in
 
-  match (event : Event.t) with
-  | Event.ElectionTimeout -> handle_election_timeout state
+  match (event : Rpc.Event.t) with
+  | Rpc.Event.ElectionTimeout -> handle_election_timeout state
   | HeartbeatTimeout -> handle_heartbeat_timeout state
   | RequestVoteResponse response ->
       handle_request_vote_response (get_peer ()) state response
@@ -92,7 +75,7 @@ let handle_event host_and_port state event =
   | RequestVoteCall call -> handle_request_vote (get_peer ()) state call
 
 let rec event_loop event_reader state =
-  let%bind { Remote_call.from = peer; event } =
+  let%bind { Rpc.Remote_call.from = peer; event } =
     get_next_event event_reader state
   in
   let state = handle_event peer state event in
@@ -113,6 +96,6 @@ let main port peer_port_1 peer_port_2 () =
   let server_state = State.create ~peers port in
   let event_pipe = Pipe.create () in
   let event_reader, event_writer = event_pipe in
-  let%bind _server = start_server event_writer port in
+  let%bind _server = Rpc.start_server event_writer port in
   let%bind () = event_loop event_reader server_state in
   Deferred.unit

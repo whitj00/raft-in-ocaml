@@ -1,50 +1,12 @@
 open! Core
 open Async
-
-module Follower_volatile_state = struct
-  (* Type t is a Peer.t Set.t *)
-  type t = unit
-
-  let init = ()
-end
+module Rpc = Raft_rpc
 
 module Peer_type = struct
   type t =
-    | Follower of Follower_volatile_state.t
+    | Follower of Follower.State.t
     | Candidate of Candidate.State.t
     | Leader of Leader.State.t
-end
-
-module Append_call = struct
-  type t = {
-    term : int;
-    prev_log_index : int;
-    prev_log_term : int;
-    entries : Log_entry.t list;
-    leader_commit : int;
-  }
-  [@@deriving fields, bin_io, sexp]
-
-  let create = Fields.create
-end
-
-module Request_call = struct
-  type t = { term : int; last_log_index : int; last_log_term : int }
-  [@@deriving fields, bin_io, sexp]
-
-  let create = Fields.create
-end
-
-module Append_response = struct
-  type t = { term : int; success : bool } [@@deriving fields, bin_io, sexp]
-
-  let create = Fields.create
-end
-
-module Request_response = struct
-  type t = { term : int; success : bool } [@@deriving fields, bin_io, sexp]
-
-  let create = Fields.create
 end
 
 module State = struct
@@ -86,7 +48,7 @@ module State = struct
       last_applied = 0;
       leader_state = None;
       peers;
-      peer_type = Follower Follower_volatile_state.init;
+      peer_type = Follower Follower.State.init;
       heartbeat_timeout = create_heartbeat_timer ();
       last_hearbeat = Time.now ();
       election_timeout = get_election_timeout ();
@@ -96,62 +58,13 @@ module State = struct
     }
 end
 
-module Event = struct
-  type t =
-    | RequestVoteCall of Request_call.t
-    | RequestVoteResponse of Request_response.t
-    | AppendEntriesCall of Append_call.t
-    | AppendEntriesResponse of Append_response.t
-    | ElectionTimeout
-    | HeartbeatTimeout
-  [@@deriving bin_io, sexp]
-
-  let to_string t = Sexp.to_string (sexp_of_t t)
-end
-
-module Remote_call = struct
-  type t = { event : Event.t; from : Host_and_port.t } [@@deriving bin_io, sexp]
-
-  let to_string t = Sexp.to_string (sexp_of_t t)
-end
-
-let raft_rpc =
-  Rpc.Rpc.create ~name:"raft" ~version:0 ~bin_query:Remote_call.bin_t
-    ~bin_response:Unit.bin_t
-
-let send_event event peer =
-  let host = Peer.host peer in
-  let port = Peer.port peer in
-  let conn =
-    match Peer.conn peer with
-    | Some conn -> conn
-    | None -> failwith "conn not set"
-  in
-  (* Use async_rpc to send event *)
-  let dispatch connection =
-    let%bind response = Rpc.Rpc.dispatch raft_rpc connection event in
-    match response with
-    | Error _ ->
-        printf "rpcerr: message failed to send to peer %s:%d\n" host port
-        |> return
-    | Ok () -> return ()
-  in
-  don't_wait_for
-    (let%bind conn_res =
-       Persistent_connection.Rpc.connected_or_failed_to_connect conn
-     in
-     match conn_res with
-     | Error _ ->
-         printf "connerr: connection failed to peer %s:%d\n" host port |> return
-     | Ok connection -> dispatch connection)
-
 let convert_to_follower state =
   match State.peer_type state with
   | Follower _ -> state
   | _ ->
       let term = State.current_term state in
       let voted_for = None in
-      let volatile_state = Follower_volatile_state.init in
+      let volatile_state = Follower.State.init in
       let peer_type = Peer_type.Follower volatile_state in
       print_endline "----------------------------------";
       printf "%d: Converting to follower\n" term;
@@ -170,12 +83,12 @@ let send_heartbeat state =
   let entries = [] in
   let leader_commit = State.commit_index state in
   let heartbeat =
-    Append_call.create ~term ~prev_log_index ~prev_log_term ~entries
+    Rpc.Append_call.create ~term ~prev_log_index ~prev_log_term ~entries
       ~leader_commit
   in
-  let event = heartbeat |> Event.AppendEntriesCall in
+  let event = heartbeat |> Rpc.Event.AppendEntriesCall in
   let from = State.self state |> Peer.to_host_and_port in
-  let () = List.iter peers ~f:(send_event { event; from }) in
+  let () = List.iter peers ~f:(Rpc.send_event { event; from }) in
   State.reset_heartbeat_timer state
 
 let request_vote peer state call =
@@ -187,7 +100,7 @@ let request_vote peer state call =
     | Leader _ -> Or_error.errorf "I am the leader"
   in
   let%bind () =
-    if Request_call.term call >= State.current_term state then return ()
+    if Rpc.Request_call.term call >= State.current_term state then return ()
     else Or_error.errorf "Term is too old"
   in
   let%bind () =
@@ -199,9 +112,10 @@ let request_vote peer state call =
         | false -> Or_error.errorf "Already voted for someone else")
   in
   let%bind () =
-    match List.nth (State.log state) (Request_call.last_log_index call) with
+    match List.nth (State.log state) (Rpc.Request_call.last_log_index call) with
     | Some entry ->
-        if Log_entry.term entry = Request_call.last_log_term call then return ()
+        if Log_entry.term entry = Rpc.Request_call.last_log_term call then
+          return ()
         else Or_error.errorf "Term mismatch"
     | None -> return ()
   in
@@ -246,13 +160,13 @@ let convert_to_candidate state =
       | None -> 0
     in
     let event =
-      Request_call.create ~term ~last_log_index ~last_log_term
-      |> Event.RequestVoteCall
+      Rpc.Request_call.create ~term ~last_log_index ~last_log_term
+      |> Rpc.Event.RequestVoteCall
     in
     let from = State.self state |> Peer.to_host_and_port in
-    let request : Remote_call.t = { event; from } in
+    let request = Rpc.Remote_call.create ~event ~from in
     printf "%d: Requesting votes from peers\n" term;
-    List.iter peers ~f:(send_event request)
+    List.iter peers ~f:(Rpc.send_event request)
   in
   let new_state = convert_if_votes new_state |> State.reset_election_timer in
   new_state
@@ -270,51 +184,53 @@ let handle_election_timeout state =
   | Candidate _ -> convert_to_follower state |> Ok
 
 let handle_request_vote peer state call =
-  let term = Int.max (Request_call.term call) (State.current_term state) in
+  let term = Int.max (Rpc.Request_call.term call) (State.current_term state) in
   let state = { state with current_term = term } in
   let response = request_vote peer state call in
   let response, state =
     match response with
     | Ok new_state ->
         printf "%d: granted vote request from %s\n" term (Peer.to_string peer);
-        let response = Request_response.create ~term ~success:true in
+        let response = Rpc.Request_response.create ~term ~success:true in
         (response, new_state)
     | Error e ->
         printf "%d: denied vote request from %s: %s\n" term
           (Peer.to_string peer) (Error.to_string_hum e);
-        let response = Request_response.create ~term ~success:false in
+        let response = Rpc.Request_response.create ~term ~success:false in
         (response, state)
   in
-  let event = response |> Event.RequestVoteResponse in
+  let event = response |> Rpc.Event.RequestVoteResponse in
   let from = State.self state |> Peer.to_host_and_port in
-  let () = send_event { event; from } peer in
+  let request = Rpc.Remote_call.create ~event ~from in
+  let () = Rpc.send_event request peer in
   Ok state
 
 let append_entries state call =
   let open Or_error.Let_syntax in
   let current_term = State.current_term state in
   let%bind () =
-    if Append_call.term call < current_term then return ()
+    if Rpc.Append_call.term call < current_term then return ()
     else Or_error.errorf "Term is too old"
   in
   let%bind () =
-    match List.nth (State.log state) (Append_call.prev_log_index call) with
+    match List.nth (State.log state) (Rpc.Append_call.prev_log_index call) with
     | Some entry ->
-        if Log_entry.term entry = Append_call.prev_log_term call then return ()
+        if Log_entry.term entry = Rpc.Append_call.prev_log_term call then
+          return ()
         else Or_error.errorf "Term mismatch"
     | None -> Or_error.errorf "No entry at prevLogIndex"
   in
   let new_log =
-    List.take (State.log state) (Append_call.prev_log_index call)
-    @ Append_call.entries call
+    List.take (State.log state) (Rpc.Append_call.prev_log_index call)
+    @ Rpc.Append_call.entries call
   in
   let new_commit_index =
-    min (Append_call.leader_commit call) (List.length new_log)
+    min (Rpc.Append_call.leader_commit call) (List.length new_log)
   in
   return { state with log = new_log; commit_index = new_commit_index }
 
 let handle_append_entries peer state call =
-  let term = Int.max (Append_call.term call) (State.current_term state) in
+  let term = Int.max (Rpc.Append_call.term call) (State.current_term state) in
   printf "%d: Received append entries from %s\n" term (Peer.to_string peer);
   let state = { state with current_term = term } in
   match State.peer_type state with
@@ -323,15 +239,15 @@ let handle_append_entries peer state call =
       let response, state =
         match response with
         | Ok new_state ->
-            let response = Append_response.create ~term ~success:true in
+            let response = Rpc.Append_response.create ~term ~success:true in
             (response, new_state)
         | Error _ ->
-            let response = Append_response.create ~term ~success:false in
+            let response = Rpc.Append_response.create ~term ~success:false in
             (response, state)
       in
-      let event = response |> Event.AppendEntriesResponse in
+      let event = response |> Rpc.Event.AppendEntriesResponse in
       let from = State.self state |> Peer.to_host_and_port in
-      let () = send_event { event; from } peer in
+      let () = Rpc.send_event { event; from } peer in
       let state = State.reset_election_timer state in
       Ok state
   | Leader _ -> Ok state
@@ -340,8 +256,8 @@ let handle_append_entries peer state call =
 let handle_request_vote_response peer state response =
   let open Or_error.Let_syntax in
   let update_term state response =
-    match Request_response.term response > State.current_term state with
-    | true -> { state with current_term = Request_response.term response }
+    match Rpc.Request_response.term response > State.current_term state with
+    | true -> { state with current_term = Rpc.Request_response.term response }
     | false -> state
   in
   match State.peer_type state with
@@ -350,7 +266,7 @@ let handle_request_vote_response peer state response =
       let new_state = update_term state response in
       let term = State.current_term new_state in
       let candidate_state =
-        match Request_response.success response with
+        match Rpc.Request_response.success response with
         | true ->
             printf "%d: Received vote from %s [votes=%d]\n"
               (State.current_term state) (Peer.to_string peer)
@@ -372,9 +288,9 @@ let handle_append_entries_response peer state response =
   printf "%d: Append entries response from %s\n" (State.current_term state)
     (Peer.to_string peer);
   let update_term state response =
-    match Append_response.term response > State.current_term state with
+    match Rpc.Append_response.term response > State.current_term state with
     | true ->
-        { state with current_term = Append_response.term response }
+        { state with current_term = Rpc.Append_response.term response }
         |> convert_to_follower
     | false -> state
   in
