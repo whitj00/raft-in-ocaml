@@ -1,23 +1,6 @@
 open! Core
 open Async
 
-module Candidate_volatile_state = struct
-  (* Type t is a Peer.t Set.t *)
-  type t = { votes : Peer.t List.t } [@@deriving fields]
-
-  let init () : t = { votes = [] }
-
-  (* Adds a peer if not already in the list *)
-  let add_vote t peer term =
-    match List.exists t.votes ~f:(fun p -> Peer.equal p peer) with
-    | true -> t
-    | false ->
-        printf "%d: adding vote from %s\n" term (Peer.to_string peer);
-        { votes = peer :: t.votes }
-
-  let count_votes t : int = List.length t.votes
-end
-
 module Follower_volatile_state = struct
   (* Type t is a Peer.t Set.t *)
   type t = unit
@@ -28,7 +11,7 @@ end
 module Peer_type = struct
   type t =
     | Follower of Follower_volatile_state.t
-    | Candidate of Candidate_volatile_state.t
+    | Candidate of Candidate.State.t
     | Leader of Leader.State.t
 end
 
@@ -239,7 +222,7 @@ let convert_if_votes state =
   match State.peer_type state with
   | Follower _ | Leader _ -> state
   | Candidate candidate_state ->
-      let votes = Candidate_volatile_state.votes candidate_state in
+      let votes = Candidate.State.votes candidate_state in
       let peers = State.peers state in
       let majority = ((List.length peers + 1) / 2) + 1 in
       if List.length votes >= majority then convert_to_leader state else state
@@ -250,7 +233,7 @@ let convert_to_candidate state =
   printf "%d: Converting to candidate\n" current_term;
   print_endline "-----------------";
   let voted_for = Some (State.self state) in
-  let volatile_state = Candidate_volatile_state.init () in
+  let volatile_state = Candidate.State.init () in
   let peer_type = Peer_type.Candidate volatile_state in
   let new_state = { state with current_term; voted_for; peer_type } in
   let peers = State.peers new_state in
@@ -371,12 +354,12 @@ let handle_request_vote_response peer state response =
         | true ->
             printf "%d: Received vote from %s [votes=%d]\n"
               (State.current_term state) (Peer.to_string peer)
-              (Candidate_volatile_state.count_votes candidate_state);
-            Candidate_volatile_state.add_vote candidate_state peer term
+              (Candidate.State.count_votes candidate_state);
+            Candidate.State.add_vote candidate_state peer term
         | false ->
             printf "%d: Received vote rejection from %s [votes=%d]\n"
               (State.current_term state) (Peer.to_string peer)
-              (Candidate_volatile_state.count_votes candidate_state);
+              (Candidate.State.count_votes candidate_state);
             candidate_state
       in
       let new_state =
