@@ -1,20 +1,6 @@
 open! Core
 open Async
 
-module Leader_volatile_state = struct
-  type t = { next_index : int Peer_db.t; match_index : int Peer_db.t }
-  [@@deriving fields]
-
-  let init (peers : Peer.t list) : t =
-    { next_index = Peer_db.init peers; match_index = Peer_db.init peers }
-
-  let update_next_index (t : t) peer index : t =
-    { t with next_index = Peer_db.update t.next_index peer index }
-
-  let update_match_index (t : t) peer index : t =
-    { t with match_index = Peer_db.update t.match_index peer index }
-end
-
 module Candidate_volatile_state = struct
   (* Type t is a Peer.t Set.t *)
   type t = { votes : Peer.t List.t } [@@deriving fields]
@@ -43,7 +29,7 @@ module Peer_type = struct
   type t =
     | Follower of Follower_volatile_state.t
     | Candidate of Candidate_volatile_state.t
-    | Leader of Leader_volatile_state.t
+    | Leader of Leader.State.t
 end
 
 module Append_call = struct
@@ -85,7 +71,7 @@ module State = struct
     log : Log_entry.t list;
     commit_index : int;
     last_applied : int;
-    leader_state : Leader_volatile_state.t option;
+    leader_state : Leader.State.t option;
     peers : Peer.t list;
     peer_type : Peer_type.t;
     heartbeat_timeout : Time.Span.t;
@@ -245,7 +231,7 @@ let convert_to_leader state =
   print_endline "-----------------";
   let voted_for = None in
   let peers = State.peers state in
-  let volatile_state = Leader_volatile_state.init peers in
+  let volatile_state = Leader.State.init peers in
   let peer_type = Peer_type.Leader volatile_state in
   { state with State.voted_for; peer_type; current_term }
 
