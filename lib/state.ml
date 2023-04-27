@@ -22,7 +22,7 @@ type t = {
 
 let create_heartbeat_timer () = Time.Span.of_sec 0.75
 let set_heartbeat_timer t time = { t with last_hearbeat = time }
-let get_election_timeout () = Time.Span.of_sec (Random.float_range 1.5 6.)
+let get_election_timeout () = Time.Span.of_sec (Random.float_range 3. 6.)
 
 let remote_nodes t =
   let self = self t in
