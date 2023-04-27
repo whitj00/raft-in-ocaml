@@ -17,6 +17,5 @@ let create ~host ~port =
   Fields.create ~host ~port ~conn
 
 let to_host_and_port t = Host_and_port.create ~host:t.host ~port:t.port
-let self = { host = "127.0.0.1"; port = 8080; conn = None }
 let equal t1 t2 = String.equal t1.host t2.host && t1.port = t2.port
 let to_string t = sprintf "%s:%d" t.host t.port

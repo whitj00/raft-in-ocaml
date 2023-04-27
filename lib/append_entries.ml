@@ -1,4 +1,5 @@
 open Core
+open Async
 module Rpc = Raft_rpc
 
 let append_entries state call =

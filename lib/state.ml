@@ -1,4 +1,5 @@
 open Core
+open Async
 module Rpc = Raft_rpc
 
 type t = {
@@ -23,6 +24,11 @@ let create_heartbeat_timer () = Time.Span.of_sec 0.75
 let set_heartbeat_timer t time = { t with last_hearbeat = time }
 let get_election_timeout () = Time.Span.of_sec (Random.float_range 1.5 6.)
 
+let remote_nodes t =
+  let self = self t in
+  let is_not_self peer = not (Peer.equal self peer) in
+  List.filter ~f:is_not_self (peers t)
+  
 let reset_election_timer t =
   {
     t with
@@ -78,7 +84,7 @@ let convert_if_votes t =
   | Candidate candidate_state -> (
       let votes = Candidate.State.votes candidate_state in
       let peers = peers t in
-      let majority = ((List.length peers + 1) / 2) + 1 in
+      let majority = ((List.length peers) / 2) + 1 in
       match List.length votes >= majority with
       | true -> convert_to_leader t
       | false -> t)
@@ -92,7 +98,6 @@ let convert_to_candidate t =
   let volatile_state = Candidate.State.init () in
   let peer_type = Peer_type.Candidate volatile_state in
   let new_state = { t with current_term; voted_for; peer_type } in
-  let peers = peers new_state in
   let () =
     let term = current_term in
     let last_log_index = List.length (log new_state) - 1 in
@@ -108,7 +113,7 @@ let convert_to_candidate t =
     let from = self t |> Peer.to_host_and_port in
     let request = Rpc.Remote_call.create ~event ~from in
     printf "%d: Requesting votes from peers\n" term;
-    List.iter peers ~f:(Rpc.send_event request)
+    remote_nodes t |> List.iter ~f:(Rpc.send_event request)
   in
   (* let new_state = convert_if_votes new_state in *)
   let new_state = reset_election_timer new_state in

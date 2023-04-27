@@ -98,6 +98,7 @@ let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
 let main port peer_port_1 peer_port_2 () =
   let peers =
     [
+      Peer.create ~host:"127.0.0.1" ~port;
       Peer.create ~host:"127.0.0.1" ~port:peer_port_1;
       Peer.create ~host:"127.0.0.1" ~port:peer_port_2;
     ]

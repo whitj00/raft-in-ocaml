@@ -19,7 +19,7 @@ let handle_request_vote_response peer state response =
         | true ->
             printf "%d: Received vote from %s [votes=%d]\n"
               (State.current_term state) (Peer.to_string peer)
-              (Candidate.State.count_votes candidate_state);
+              (1 + Candidate.State.count_votes candidate_state);
             Candidate.State.add_vote candidate_state peer term
         | false ->
             printf "%d: Received vote rejection from %s [votes=%d]\n"
@@ -36,14 +36,8 @@ let handle_request_vote_response peer state response =
 let request_vote peer state call =
   let open Or_error.Let_syntax in
   let%bind () =
-    match State.peer_type state with
-    | Follower _ -> return ()
-    | Candidate _ -> return ()
-    | Leader _ -> Or_error.errorf "I am the leader"
-  in
-  let%bind () =
     if Rpc.Request_call.term call >= State.current_term state then return ()
-    else Or_error.errorf "Term is too old"
+    else Or_error.errorf "Term is too old: %d" (Rpc.Request_call.term call)
   in
   let%bind () =
     match State.voted_for state with
