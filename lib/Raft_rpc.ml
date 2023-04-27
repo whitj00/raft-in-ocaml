@@ -58,7 +58,6 @@ end
 let raft_rpc =
   Rpc.One_way.create ~name:"raft" ~version:0 ~bin_msg:Remote_call.bin_t
 
-
 let send_event event peer =
   let host = Peer.host peer in
   let port = Peer.port peer in
@@ -76,9 +75,7 @@ let send_event event peer =
         |> return
     | Ok () -> return ()
   in
-  let conn_res =
-    Persistent_connection.Rpc.current_connection conn
-  in
+  let conn_res = Persistent_connection.Rpc.current_connection conn in
   match conn_res with
   | None ->
       printf "connerr: connection failed to peer %s:%d\n" host port |> return
@@ -86,7 +83,8 @@ let send_event event peer =
 
 let start_server writer port =
   let implementation =
-    Rpc.One_way.implement raft_rpc (fun _peer event -> ignore (Pipe.write writer event))
+    Rpc.One_way.implement raft_rpc (fun _peer event ->
+        ignore (Pipe.write writer event))
   in
   Tcp.Server.create (Tcp.Where_to_listen.of_port port) ~on_handler_error:`Ignore
     (fun remote reader writer ->

@@ -82,7 +82,8 @@ let handle_event host_and_port state event =
   | AppendEntriesCall call ->
       Append_entries.handle_append_entries_call peer state call
   | AppendEntriesResponse response ->
-      Append_entries.handle_append_entries_response peer state response |> return
+      Append_entries.handle_append_entries_response peer state response
+      |> return
   | RequestVoteCall call -> Request_vote.handle_request_vote peer state call
   | RequestVoteResponse response ->
       Request_vote.handle_request_vote_response peer state response |> return
@@ -98,7 +99,7 @@ let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
       print_endline (Error.to_string_hum error);
       Deferred.unit
 
-let main port peer_port_1 peer_port_2 () =
+let main ~port ~peer_port_1 ~peer_port_2 () =
   let peers =
     [
       Peer.create ~host:"127.0.0.1" ~port;
@@ -106,7 +107,9 @@ let main port peer_port_1 peer_port_2 () =
       Peer.create ~host:"127.0.0.1" ~port:peer_port_2;
     ]
   in
-  let server_state = State.create ~peers ~port |> State.convert_to_follower ~leader:None in
+  let server_state =
+    State.create ~peers ~port |> State.convert_to_follower ~leader:None
+  in
   let event_pipe = Pipe.create () in
   let (event_reader, event_writer)
         : Rpc.Remote_call.t Pipe.Reader.t * Rpc.Remote_call.t Pipe.Writer.t =
