@@ -238,9 +238,9 @@ let handle_append_entries peer state call =
       let response = append_entries state call in
       let response, state =
         match response with
-        | Ok new_state ->
+        | Ok state ->
             let response = Rpc.Append_response.create ~term ~success:true in
-            (response, new_state)
+            (response, state)
         | Error _ ->
             let response = Rpc.Append_response.create ~term ~success:false in
             (response, state)
