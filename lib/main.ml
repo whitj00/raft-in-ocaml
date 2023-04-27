@@ -17,17 +17,17 @@ let get_election_timeout state =
 
 let handle_heartbeat_timeout state =
   match State.peer_type state with
-  | Leader _ -> Heartbeat.reset_timer state |> Heartbeat.send |> Ok
-  | Follower _ | Candidate _ -> Ok state
+  | Leader _ -> Heartbeat.reset_timer state |> Heartbeat.send
+  | Follower _ | Candidate _ -> Ok state |> return
 
 let handle_election_timeout state =
   printf "%d: Election timeout\n" (State.current_term state);
-  let state =
+  let%bind state =
     match State.peer_type state with
-    | Leader _ -> state
     | Follower _ | Candidate _ -> State.convert_to_candidate state
+    | Leader _ -> return state
   in
-  Ok state
+  Ok state |> return
 
 let get_heartbeat_timeout state =
   let started_at = State.started_at state in
@@ -82,16 +82,16 @@ let handle_event host_and_port state event =
   | AppendEntriesCall call ->
       Append_entries.handle_append_entries_call peer state call
   | AppendEntriesResponse response ->
-      Append_entries.handle_append_entries_response peer state response
+      Append_entries.handle_append_entries_response peer state response |> return
   | RequestVoteCall call -> Request_vote.handle_request_vote peer state call
   | RequestVoteResponse response ->
-      Request_vote.handle_request_vote_response peer state response
+      Request_vote.handle_request_vote_response peer state response |> return
 
 let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
   let%bind { Rpc.Remote_call.from = peer; event } =
     get_next_event event_reader state
   in
-  let state = handle_event peer state event in
+  let%bind state = handle_event peer state event in
   match state with
   | Ok state -> event_loop event_reader state
   | Error error ->
@@ -106,7 +106,7 @@ let main port peer_port_1 peer_port_2 () =
       Peer.create ~host:"127.0.0.1" ~port:peer_port_2;
     ]
   in
-  let server_state = State.create ~peers ~port in
+  let server_state = State.create ~peers ~port |> State.convert_to_follower ~leader:None in
   let event_pipe = Pipe.create () in
   let (event_reader, event_writer)
         : Rpc.Remote_call.t Pipe.Reader.t * Rpc.Remote_call.t Pipe.Writer.t =

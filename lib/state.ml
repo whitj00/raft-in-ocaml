@@ -94,7 +94,7 @@ let convert_to_candidate t =
   let voted_for = Some (self t) in
   let peer_type = Candidate.State.init (self t) |> Peer_type.Candidate in
   let t = { t with current_term; voted_for; peer_type } in
-  let () =
+  let%bind () =
     let term = current_term in
     let last_log_index = List.length (log t) - 1 in
     let last_log_term =
@@ -107,10 +107,10 @@ let convert_to_candidate t =
     let from = self t |> Peer.to_host_and_port in
     let request = Rpc.Remote_call.create ~event ~from in
     printf "%d: Requesting votes from peers\n" term;
-    remote_nodes t |> List.iter ~f:(Rpc.send_event request)
+    remote_nodes t |> Deferred.List.iter ~f:(Rpc.send_event request)
   in
   (* let new_state = convert_if_votes new_state in *)
-  reset_election_timer t
+  reset_election_timer t |> return
 
 let update_term_and_convert_if_outdated state term leader =
   let current_term = current_term state in

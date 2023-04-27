@@ -32,9 +32,9 @@ let append_entries state call =
 
 let handle_append_entries_call peer state call =
   let term = Rpc.Append_call.term call in
-  let current_term = State.current_term state in
   let leader = Peer.to_host_and_port peer |> Some in
   let state = State.update_term_and_convert_if_outdated state term leader in
+  let current_term = State.current_term state in
   printf "%d: Received append entries from %s\n" current_term
     (Peer.to_string peer);
   match State.peer_type state with
@@ -51,11 +51,11 @@ let handle_append_entries_call peer state call =
       in
       let event = response |> Rpc.Event.AppendEntriesResponse in
       let from = State.self state |> Peer.to_host_and_port in
-      let () = Rpc.send_event { event; from } peer in
+      let%bind () = Rpc.send_event { event; from } peer in
       let state = State.reset_election_timer state in
-      Ok state
-  | Leader _ -> Ok state
-  | Candidate _ -> State.convert_to_follower state ~leader |> Ok
+      Ok state |> return
+  | Leader _ -> Ok state |> return
+  | Candidate _ -> State.convert_to_follower state ~leader |> Ok |> return
 
 let handle_append_entries_response peer state response =
   printf "%d: Append entries response from %s\n" (State.current_term state)

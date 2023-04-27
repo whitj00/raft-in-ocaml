@@ -50,8 +50,8 @@ let handle_request_vote peer state call =
   let event = response |> Rpc.Event.RequestVoteResponse in
   let from = State.self state |> Peer.to_host_and_port in
   let request = Rpc.Remote_call.create ~event ~from in
-  let () = Rpc.send_event request peer in
-  Ok state
+  let%bind () = Rpc.send_event request peer in
+  Ok state |> return
 
 let handle_request_vote_response peer state response =
   let open Or_error.Let_syntax in
