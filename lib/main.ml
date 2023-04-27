@@ -1,6 +1,5 @@
 open Core
 open Async
-open Protocol
 module Rpc = Raft_rpc
 
 let rec read_from_pipe pipe_reader =
@@ -77,13 +76,14 @@ let handle_event host_and_port state event =
   match (event : Rpc.Event.t) with
   | Rpc.Event.ElectionTimeout -> handle_election_timeout state
   | HeartbeatTimeout -> handle_heartbeat_timeout state
-  | RequestVoteResponse response ->
-      handle_request_vote_response (get_peer ()) state response
-  | AppendEntriesResponse response ->
-      Append_entries.handle_append_entries_response (get_peer ()) state response
   | AppendEntriesCall call ->
       Append_entries.handle_append_entries_call (get_peer ()) state call
-  | RequestVoteCall call -> handle_request_vote (get_peer ()) state call
+  | AppendEntriesResponse response ->
+      Append_entries.handle_append_entries_response (get_peer ()) state response
+  | RequestVoteCall call ->
+      Request_vote.handle_request_vote (get_peer ()) state call
+  | RequestVoteResponse response ->
+      Request_vote.handle_request_vote_response (get_peer ()) state response
 
 let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
   let%bind { Rpc.Remote_call.from = peer; event } =

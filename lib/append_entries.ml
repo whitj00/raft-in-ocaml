@@ -1,5 +1,6 @@
 open Core
 module Rpc = Raft_rpc
+
 let append_entries state call =
   let open Or_error.Let_syntax in
   let current_term = State.current_term state in
