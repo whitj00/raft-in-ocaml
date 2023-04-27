@@ -7,11 +7,9 @@ let reset_timer state = State.set_heartbeat_timer state (Time.now ())
 let send state =
   let term = State.current_term state in
   let logs = State.log state in
-  let prev_log_index = List.length logs - 1 in
-  let prev_log_term =
-    match List.last logs with Some v -> Log_entry.term v | None -> 0
-  in
-  let entries = [] in
+  let prev_log_index = Command_log.last_index logs in
+  let prev_log_term = Command_log.last_log_term logs in
+  let entries = Command_log.init () in
   let leader_commit = State.commit_index state in
   let leader = State.self state |> Peer.to_host_and_port in
   let heartbeat =

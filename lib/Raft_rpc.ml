@@ -7,7 +7,7 @@ module Append_call = struct
     leader : Host_and_port.t;
     prev_log_index : int;
     prev_log_term : int;
-    entries : Log_entry.t list;
+    entries : Command_log.t;
     leader_commit : int;
   }
   [@@deriving fields, bin_io, sexp]

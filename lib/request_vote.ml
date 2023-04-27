@@ -20,10 +20,13 @@ let request_vote peer state call =
         | false -> Or_error.errorf "Already voted for someone else")
   in
   let%bind () =
-    match List.nth (State.log state) (Rpc.Request_call.last_log_index call) with
+    match
+      Command_log.get_index (State.log state)
+        (Rpc.Request_call.last_log_index call)
+    with
     | Some entry ->
-        if Log_entry.term entry = Rpc.Request_call.last_log_term call then
-          return ()
+        if Command_log.Entry.term entry = Rpc.Request_call.last_log_term call
+        then return ()
         else Or_error.errorf "Log_term mismatch"
     | None -> return ()
   in

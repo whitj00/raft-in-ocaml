@@ -5,7 +5,7 @@ module Rpc = Raft_rpc
 type t = {
   current_term : int;
   voted_for : Peer.t option;
-  log : Log_entry.t list;
+  log : Command_log.t;
   commit_index : int;
   last_applied : int;
   peers : Peer.t list;
@@ -41,7 +41,7 @@ let create ~peers ~port =
   {
     current_term = 0;
     voted_for = None;
-    log = [];
+    log = Command_log.init ();
     commit_index = 0;
     last_applied = 0;
     peers;
@@ -96,10 +96,8 @@ let convert_to_candidate t =
   let t = { t with current_term; voted_for; peer_type } in
   let%bind () =
     let term = current_term in
-    let last_log_index = List.length (log t) - 1 in
-    let last_log_term =
-      match List.last (log t) with Some v -> Log_entry.term v | None -> 0
-    in
+    let last_log_index = Command_log.last_index (log t) in
+    let last_log_term = Command_log.last_log_term (log t) in
     let event =
       Rpc.Request_call.create ~term ~last_log_index ~last_log_term
       |> Rpc.Event.RequestVoteCall

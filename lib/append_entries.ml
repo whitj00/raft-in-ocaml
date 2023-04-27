@@ -5,6 +5,8 @@ module Rpc = Raft_rpc
 let append_entries state call =
   let open Or_error.Let_syntax in
   let current_term = State.current_term state in
+  let cmd_log = State.log state in
+  let prev_log_term = Rpc.Append_call.prev_log_index call in
   let%bind () =
     let term = Rpc.Append_call.term call in
     match term < current_term with
@@ -14,19 +16,19 @@ let append_entries state call =
           current_term
   in
   let%bind () =
-    match List.nth (State.log state) (Rpc.Append_call.prev_log_index call) with
+    match Command_log.get_index cmd_log prev_log_term with
     | Some entry ->
-        if Log_entry.term entry = Rpc.Append_call.prev_log_term call then
-          return ()
+        if Command_log.Entry.term entry = Rpc.Append_call.prev_log_term call
+        then return ()
         else Or_error.errorf "Term mismatch"
     | None -> Or_error.errorf "No entry at prevLogIndex"
   in
   let new_log =
-    List.take (State.log state) (Rpc.Append_call.prev_log_index call)
-    @ Rpc.Append_call.entries call
+    let entries = Rpc.Append_call.entries call in
+    Command_log.append (Command_log.take cmd_log prev_log_term) entries
   in
   let new_commit_index =
-    min (Rpc.Append_call.leader_commit call) (List.length new_log)
+    min (Rpc.Append_call.leader_commit call) (Command_log.length new_log)
   in
   return { state with log = new_log; commit_index = new_commit_index }
 
