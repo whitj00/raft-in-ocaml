@@ -17,7 +17,7 @@ let get_election_timeout state =
 
 let handle_heartbeat_timeout state =
   match State.peer_type state with
-  | Leader _ -> State.reset_heartbeat_timer state |> State.send_heartbeat |> Ok
+  | Leader _ -> Heartbeat.reset_timer state |> Heartbeat.send |> Ok
   | Follower _ | Candidate _ -> Ok state
 
 let handle_election_timeout state =

@@ -20,7 +20,7 @@ type t = {
 [@@deriving fields]
 
 let create_heartbeat_timer () = Time.Span.of_sec 0.75
-let reset_heartbeat_timer state = { state with last_hearbeat = Time.now () }
+let set_heartbeat_timer t time = { t with last_hearbeat = time }
 let get_election_timeout () = Time.Span.of_sec (Random.float_range 1.5 6.)
 
 let reset_election_timer t =
@@ -75,11 +75,13 @@ let convert_to_leader t =
 let convert_if_votes t =
   match peer_type t with
   | Follower _ | Leader _ -> t
-  | Candidate candidate_state ->
+  | Candidate candidate_state -> (
       let votes = Candidate.State.votes candidate_state in
       let peers = peers t in
       let majority = ((List.length peers + 1) / 2) + 1 in
-      if List.length votes >= majority then convert_to_leader t else t
+      match List.length votes >= majority with
+      | true -> convert_to_leader t
+      | false -> t)
 
 let convert_to_candidate t =
   let current_term = current_term t + 1 in
@@ -108,25 +110,6 @@ let convert_to_candidate t =
     printf "%d: Requesting votes from peers\n" term;
     List.iter peers ~f:(Rpc.send_event request)
   in
-  let new_state = convert_if_votes new_state |> reset_election_timer in
+  (* let new_state = convert_if_votes new_state in *)
+  let new_state = reset_election_timer new_state in
   new_state
-
-let send_heartbeat t =
-  let term = current_term t in
-  printf "%d: Sending heartbeat\n" term;
-  let peers = peers t in
-  let logs = log t in
-  let prev_log_index = List.length logs - 1 in
-  let prev_log_term =
-    match List.last logs with Some v -> Log_entry.term v | None -> 0
-  in
-  let entries = [] in
-  let leader_commit = commit_index t in
-  let heartbeat =
-    Rpc.Append_call.create ~term ~prev_log_index ~prev_log_term ~entries
-      ~leader_commit
-  in
-  let event = heartbeat |> Rpc.Event.AppendEntriesCall in
-  let from = self t |> Peer.to_host_and_port in
-  let () = List.iter peers ~f:(Rpc.send_event { event; from }) in
-  reset_heartbeat_timer t
