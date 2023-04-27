@@ -18,7 +18,7 @@ let get_election_timeout state =
 
 let handle_heartbeat_timeout state =
   match State.peer_type state with
-  | Leader _ -> State.reset_heartbeat_timer state |> send_heartbeat |> Ok
+  | Leader _ -> State.reset_heartbeat_timer state |> State.send_heartbeat |> Ok
   | Follower _ | Candidate _ -> Ok state
 
 let handle_election_timeout state =
@@ -81,7 +81,7 @@ let handle_event host_and_port state event =
       handle_request_vote_response (get_peer ()) state response
   | AppendEntriesResponse response ->
       handle_append_entries_response (get_peer ()) state response
-  | AppendEntriesCall call -> handle_append_entries (get_peer ()) state call
+  | AppendEntriesCall call -> Append_entries.handle_append_entries_call (get_peer ()) state call
   | RequestVoteCall call -> handle_request_vote (get_peer ()) state call
 
 let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
@@ -103,7 +103,7 @@ let main port peer_port_1 peer_port_2 () =
     ]
   in
   let _peers = [] in
-  let server_state = State.create ~peers port in
+  let server_state = State.create ~peers ~port in
   let event_pipe = Pipe.create () in
   let (event_reader, event_writer)
         : Rpc.Remote_call.t Pipe.Reader.t * Rpc.Remote_call.t Pipe.Writer.t =
