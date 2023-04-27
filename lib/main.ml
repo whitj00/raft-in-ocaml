@@ -7,8 +7,7 @@ let rec read_from_pipe pipe_reader =
   let%bind response = Pipe.read pipe_reader in
   match response with
   | `Eof -> read_from_pipe pipe_reader
-  | `Ok remote_call ->
-      Deferred.return remote_call
+  | `Ok remote_call -> Deferred.return remote_call
 
 let get_election_timeout state =
   let election_timer = State.election_timeout state in
@@ -16,6 +15,18 @@ let get_election_timeout state =
     Time.diff (Time.now ()) (State.last_election state)
   in
   Time.Span.(election_timer - time_since_last_election)
+
+let handle_heartbeat_timeout state =
+  match State.peer_type state with
+  | Leader _ -> State.reset_heartbeat_timer state |> send_heartbeat |> Ok
+  | Follower _ | Candidate _ -> Ok state
+
+let handle_election_timeout state =
+  printf "%d: Election timeout\n" (State.current_term state);
+  match State.peer_type state with
+  | Leader _ -> Ok state
+  | Follower _ -> State.convert_to_candidate state |> Ok
+  | Candidate _ -> State.convert_to_follower state |> Ok
 
 let get_heartbeat_timeout state =
   let started_at = State.started_at state in
@@ -73,7 +84,7 @@ let handle_event host_and_port state event =
   | AppendEntriesCall call -> handle_append_entries (get_peer ()) state call
   | RequestVoteCall call -> handle_request_vote (get_peer ()) state call
 
-let rec event_loop (event_reader:Rpc.Remote_call.t Pipe.Reader.t) state =
+let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
   let%bind { Rpc.Remote_call.from = peer; event } =
     get_next_event event_reader state
   in
@@ -94,8 +105,10 @@ let main port peer_port_1 peer_port_2 () =
   let _peers = [] in
   let server_state = State.create ~peers port in
   let event_pipe = Pipe.create () in
-  let (event_reader, event_writer) : (Rpc.Remote_call.t) Pipe.Reader.t *
-  (Rpc.Remote_call.t) Pipe.Writer.t = event_pipe in
+  let (event_reader, event_writer)
+        : Rpc.Remote_call.t Pipe.Reader.t * Rpc.Remote_call.t Pipe.Writer.t =
+    event_pipe
+  in
   let%bind _server = Rpc.start_server event_writer port in
   let%bind () = event_loop event_reader server_state in
   Deferred.unit
