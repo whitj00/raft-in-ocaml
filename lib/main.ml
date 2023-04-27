@@ -80,8 +80,9 @@ let handle_event host_and_port state event =
   | RequestVoteResponse response ->
       handle_request_vote_response (get_peer ()) state response
   | AppendEntriesResponse response ->
-      handle_append_entries_response (get_peer ()) state response
-  | AppendEntriesCall call -> Append_entries.handle_append_entries_call (get_peer ()) state call
+      Append_entries.handle_append_entries_response (get_peer ()) state response
+  | AppendEntriesCall call ->
+      Append_entries.handle_append_entries_call (get_peer ()) state call
   | RequestVoteCall call -> handle_request_vote (get_peer ()) state call
 
 let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =

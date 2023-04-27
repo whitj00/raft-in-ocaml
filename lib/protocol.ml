@@ -33,18 +33,6 @@ let handle_request_vote_response peer state response =
       in
       return new_state
 
-let handle_append_entries_response peer state response =
-  printf "%d: Append entries response from %s\n" (State.current_term state)
-    (Peer.to_string peer);
-  let update_term state response =
-    match Rpc.Append_response.term response > State.current_term state with
-    | true ->
-        { state with current_term = Rpc.Append_response.term response }
-        |> State.convert_to_follower
-    | false -> state
-  in
-  update_term state response |> Ok
-
 let request_vote peer state call =
   let open Or_error.Let_syntax in
   let%bind () =

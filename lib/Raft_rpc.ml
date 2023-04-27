@@ -14,13 +14,18 @@ module Append_call = struct
   let create = Fields.create
 end
 
+module Append_response = struct
+  type t = { term : int; success : bool } [@@deriving fields, bin_io, sexp]
+
+  let create = Fields.create
+end
+
 module Request_call = struct
   type t = { term : int; last_log_index : int; last_log_term : int }
   [@@deriving fields, bin_io, sexp]
 
   let create = Fields.create
 end
-
 
 module Request_response = struct
   type t = { term : int; success : bool } [@@deriving fields, bin_io, sexp]
@@ -32,7 +37,7 @@ module Event = struct
   type t =
     | RequestVoteCall of Request_call.t
     | RequestVoteResponse of Request_response.t
-    | AppendEntriesCall of Append_entries.Append_call.t
+    | AppendEntriesCall of Append_call.t
     | AppendEntriesResponse of Append_response.t
     | ElectionTimeout
     | HeartbeatTimeout
