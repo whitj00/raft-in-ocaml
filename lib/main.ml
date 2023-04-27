@@ -64,7 +64,7 @@ let rec get_next_event pipe_reader state =
   else get_next_event pipe_reader state
 
 let handle_event host_and_port state event =
-  let get_peer () =
+  let peer =
     let peers = State.peers state in
     let peer_opt =
       List.find peers ~f:(fun peer ->
@@ -77,13 +77,12 @@ let handle_event host_and_port state event =
   | Rpc.Event.ElectionTimeout -> handle_election_timeout state
   | HeartbeatTimeout -> handle_heartbeat_timeout state
   | AppendEntriesCall call ->
-      Append_entries.handle_append_entries_call (get_peer ()) state call
+      Append_entries.handle_append_entries_call peer state call
   | AppendEntriesResponse response ->
-      Append_entries.handle_append_entries_response (get_peer ()) state response
-  | RequestVoteCall call ->
-      Request_vote.handle_request_vote (get_peer ()) state call
+      Append_entries.handle_append_entries_response peer state response
+  | RequestVoteCall call -> Request_vote.handle_request_vote peer state call
   | RequestVoteResponse response ->
-      Request_vote.handle_request_vote_response (get_peer ()) state response
+      Request_vote.handle_request_vote_response peer state response
 
 let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
   let%bind { Rpc.Remote_call.from = peer; event } =
@@ -103,7 +102,6 @@ let main port peer_port_1 peer_port_2 () =
       Peer.create ~host:"127.0.0.1" ~port:peer_port_2;
     ]
   in
-  let _peers = [] in
   let server_state = State.create ~peers ~port in
   let event_pipe = Pipe.create () in
   let (event_reader, event_writer)
