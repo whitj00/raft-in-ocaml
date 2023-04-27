@@ -4,8 +4,8 @@ open Async
 module Append_call = struct
   type t = {
     term : int; (* Leader's term *)
-    leader: Host_and_port.t;
-    prev_log_index : int; 
+    leader : Host_and_port.t;
+    prev_log_index : int;
     prev_log_term : int;
     entries : Log_entry.t list;
     leader_commit : int;

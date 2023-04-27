@@ -4,7 +4,7 @@ open Async
 module State = struct
   type t = { votes : Peer.t List.t } [@@deriving fields]
 
-  let init () : t = { votes = [] }
+  let init self : t = { votes = [ self ] }
 
   (* Adds a peer if not already in the list *)
   let add_vote t peer term =

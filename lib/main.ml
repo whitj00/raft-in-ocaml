@@ -22,10 +22,12 @@ let handle_heartbeat_timeout state =
 
 let handle_election_timeout state =
   printf "%d: Election timeout\n" (State.current_term state);
-  match State.peer_type state with
-  | Leader _ -> Ok state
-  | Follower _ -> State.convert_to_candidate state |> Ok
-  | Candidate _ -> State.convert_to_follower state |> Ok
+  let state =
+    match State.peer_type state with
+    | Leader _ -> state
+    | Follower _ | Candidate _ -> State.convert_to_candidate state
+  in
+  Ok state
 
 let get_heartbeat_timeout state =
   let started_at = State.started_at state in
@@ -48,6 +50,10 @@ let rec get_next_event pipe_reader state =
     | Candidate _ -> false
     | Follower _ -> false
   in
+  if Pipe.length pipe_reader > 0 then
+    let%bind response = read_from_pipe pipe_reader in
+    Deferred.return response
+  else
   if (not uses_heartbeat) && Time.Span.(election_timeout < Time.Span.of_sec 0.)
   then
     let event = Rpc.Event.ElectionTimeout in
@@ -58,9 +64,6 @@ let rec get_next_event pipe_reader state =
     let event = Rpc.Event.HeartbeatTimeout in
     let from = State.self state |> Peer.to_host_and_port in
     Deferred.return { Rpc.Remote_call.event; from }
-  else if Pipe.length pipe_reader > 0 then
-    let%bind response = read_from_pipe pipe_reader in
-    Deferred.return response
   else get_next_event pipe_reader state
 
 let handle_event host_and_port state event =
@@ -111,4 +114,4 @@ let main port peer_port_1 peer_port_2 () =
   in
   let%bind _server = Rpc.start_server event_writer port in
   let%bind () = event_loop event_reader server_state in
-  Deferred.unit
+  return ()

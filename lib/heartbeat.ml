@@ -7,7 +7,6 @@ let reset_timer state = State.set_heartbeat_timer state (Time.now ())
 let send state =
   let term = State.current_term state in
   printf "%d: Sending heartbeat\n" term;
-  let peers = State.peers state in
   let logs = State.log state in
   let prev_log_index = List.length logs - 1 in
   let prev_log_term =
@@ -22,5 +21,6 @@ let send state =
   in
   let event = heartbeat |> Rpc.Event.AppendEntriesCall in
   let from = State.self state |> Peer.to_host_and_port in
-  let () = List.iter peers ~f:(Rpc.send_event { event; from }) in
+  let remote_peers = State.remote_nodes state in
+  let () = List.iter remote_peers ~f:(Rpc.send_event { event; from }) in
   reset_timer state

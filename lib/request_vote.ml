@@ -2,42 +2,14 @@ open! Core
 open Async
 module Rpc = Raft_rpc
 
-let handle_request_vote_response peer state response =
-  let open Or_error.Let_syntax in
-  let update_term state response =
-    match Rpc.Request_response.term response > State.current_term state with
-    | true -> { state with current_term = Rpc.Request_response.term response }
-    | false -> state
-  in
-  match State.peer_type state with
-  | Follower _ | Leader _ -> return state
-  | Candidate candidate_state ->
-      let new_state = update_term state response in
-      let term = State.current_term new_state in
-      let candidate_state =
-        match Rpc.Request_response.success response with
-        | true ->
-            printf "%d: Received vote from %s [votes=%d]\n"
-              (State.current_term state) (Peer.to_string peer)
-              (1 + Candidate.State.count_votes candidate_state);
-            Candidate.State.add_vote candidate_state peer term
-        | false ->
-            printf "%d: Received vote rejection from %s [votes=%d]\n"
-              (State.current_term state) (Peer.to_string peer)
-              (Candidate.State.count_votes candidate_state);
-            candidate_state
-      in
-      let new_state =
-        { new_state with peer_type = Candidate candidate_state }
-        |> State.convert_if_votes
-      in
-      return new_state
-
 let request_vote peer state call =
   let open Or_error.Let_syntax in
+  let term = Rpc.Request_call.term call in
+  let current_term = State.current_term state in
   let%bind () =
-    if Rpc.Request_call.term call >= State.current_term state then return ()
-    else Or_error.errorf "Term is too old: %d" (Rpc.Request_call.term call)
+    match term < current_term with
+    | true -> Or_error.errorf "Term is too old: %d" (Rpc.Request_call.term call)
+    | false -> return ()
   in
   let%bind () =
     match State.voted_for state with
@@ -52,23 +24,25 @@ let request_vote peer state call =
     | Some entry ->
         if Log_entry.term entry = Rpc.Request_call.last_log_term call then
           return ()
-        else Or_error.errorf "Term mismatch"
+        else Or_error.errorf "Log_term mismatch"
     | None -> return ()
   in
-  { state with voted_for = Some peer } |> State.convert_to_follower |> return
+  { state with voted_for = Some peer } |> State.reset_election_timer |> return
 
 let handle_request_vote peer state call =
-  let term = Int.max (Rpc.Request_call.term call) (State.current_term state) in
-  let state = { state with current_term = term } in
+  let term = Rpc.Request_call.term call in
+  let state = State.update_term_and_convert_if_outdated state term in
   let response = request_vote peer state call in
+  let current_term = State.current_term state in
   let response, state =
     match response with
-    | Ok new_state ->
-        printf "%d: granted vote request from %s\n" term (Peer.to_string peer);
+    | Ok state ->
+        printf "%d: granted vote request from %s\n" current_term
+          (Peer.to_string peer);
         let response = Rpc.Request_response.create ~term ~success:true in
-        (response, new_state)
+        (response, state)
     | Error e ->
-        printf "%d: denied vote request from %s: %s\n" term
+        printf "%d: denied vote request from %s: %s\n" current_term
           (Peer.to_string peer) (Error.to_string_hum e);
         let response = Rpc.Request_response.create ~term ~success:false in
         (response, state)
@@ -78,3 +52,37 @@ let handle_request_vote peer state call =
   let request = Rpc.Remote_call.create ~event ~from in
   let () = Rpc.send_event request peer in
   Ok state
+
+let handle_request_vote_response peer state response =
+  let open Or_error.Let_syntax in
+  let term = Rpc.Request_response.term response in
+  let response = Rpc.Request_response.success response in
+  let state = State.update_term_and_convert_if_outdated state term in
+  let current_term = State.current_term state in
+  match State.peer_type state with
+  | Follower _ | Leader _ -> return state
+  | Candidate candidate_state ->
+      let candidate_state =
+        let current_votes = Candidate.State.count_votes candidate_state in
+        let peer_str = Peer.to_string peer in
+        match response with
+        | true -> (
+            match term = current_term with
+            | true ->
+                printf "%d: Received vote from %s [votes=%d]\n" current_term
+                  peer_str (1 + current_votes);
+                Candidate.State.add_vote candidate_state peer current_term
+            | false ->
+                printf "%d: Stale vote from %s for term %d [votes=%d]\n"
+                  current_term peer_str term current_votes;
+                candidate_state)
+        | false ->
+            printf "%d: Received vote rejection from %s [votes=%d]\n"
+              current_term peer_str current_votes;
+            candidate_state
+      in
+      let state =
+        { state with peer_type = Candidate candidate_state }
+        |> State.convert_if_votes
+      in
+      return state

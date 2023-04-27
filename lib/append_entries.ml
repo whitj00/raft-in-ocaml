@@ -6,8 +6,12 @@ let append_entries state call =
   let open Or_error.Let_syntax in
   let current_term = State.current_term state in
   let%bind () =
-    if Rpc.Append_call.term call < current_term then return ()
-    else Or_error.errorf "Term is too old"
+    let term = Rpc.Append_call.term call in
+    match term < current_term with
+    | true -> return ()
+    | false ->
+        Or_error.errorf "Term is too old [term: %d] [current_term: %d]" term
+          current_term
   in
   let%bind () =
     match List.nth (State.log state) (Rpc.Append_call.prev_log_index call) with
@@ -24,12 +28,14 @@ let append_entries state call =
   let new_commit_index =
     min (Rpc.Append_call.leader_commit call) (List.length new_log)
   in
-  return { state with log = new_log; commit_index = new_commit_index }
+  return { state with log = new_log; commit_index = new_commit_index; }
 
 let handle_append_entries_call peer state call =
-  let term = Int.max (Rpc.Append_call.term call) (State.current_term state) in
-  let state = { state with current_term = term } in
-  printf "%d: Received append entries from %s\n" term (Peer.to_string peer);
+  let term = Rpc.Append_call.term call in
+  let current_term = State.current_term state in
+  let state = State.update_term_and_convert_if_outdated state term in
+  printf "%d: Received append entries from %s\n" current_term
+    (Peer.to_string peer);
   match State.peer_type state with
   | Follower _ ->
       let response = append_entries state call in
@@ -53,11 +59,5 @@ let handle_append_entries_call peer state call =
 let handle_append_entries_response peer state response =
   printf "%d: Append entries response from %s\n" (State.current_term state)
     (Peer.to_string peer);
-  let update_term state response =
-    match Rpc.Append_response.term response > State.current_term state with
-    | true ->
-        { state with current_term = Rpc.Append_response.term response }
-        |> State.convert_to_follower
-    | false -> state
-  in
-  update_term state response |> Ok
+  let term = Rpc.Append_response.term response in
+  State.update_term_and_convert_if_outdated state term |> Ok
