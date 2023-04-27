@@ -28,12 +28,13 @@ let append_entries state call =
   let new_commit_index =
     min (Rpc.Append_call.leader_commit call) (List.length new_log)
   in
-  return { state with log = new_log; commit_index = new_commit_index; }
+  return { state with log = new_log; commit_index = new_commit_index }
 
 let handle_append_entries_call peer state call =
   let term = Rpc.Append_call.term call in
   let current_term = State.current_term state in
-  let state = State.update_term_and_convert_if_outdated state term in
+  let leader = Peer.to_host_and_port peer |> Some in
+  let state = State.update_term_and_convert_if_outdated state term leader in
   printf "%d: Received append entries from %s\n" current_term
     (Peer.to_string peer);
   match State.peer_type state with
@@ -54,10 +55,10 @@ let handle_append_entries_call peer state call =
       let state = State.reset_election_timer state in
       Ok state
   | Leader _ -> Ok state
-  | Candidate _ -> State.convert_to_follower state |> Ok
+  | Candidate _ -> State.convert_to_follower state ~leader |> Ok
 
 let handle_append_entries_response peer state response =
   printf "%d: Append entries response from %s\n" (State.current_term state)
     (Peer.to_string peer);
   let term = Rpc.Append_response.term response in
-  State.update_term_and_convert_if_outdated state term |> Ok
+  State.update_term_and_convert_if_outdated state term None |> Ok

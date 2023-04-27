@@ -53,8 +53,8 @@ let rec get_next_event pipe_reader state =
   if Pipe.length pipe_reader > 0 then
     let%bind response = read_from_pipe pipe_reader in
     Deferred.return response
-  else
-  if (not uses_heartbeat) && Time.Span.(election_timeout < Time.Span.of_sec 0.)
+  else if
+    (not uses_heartbeat) && Time.Span.(election_timeout < Time.Span.of_sec 0.)
   then
     let event = Rpc.Event.ElectionTimeout in
     let from = State.self state |> Peer.to_host_and_port in

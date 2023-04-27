@@ -45,7 +45,7 @@ let create ~peers ~port =
     commit_index = 0;
     last_applied = 0;
     peers;
-    peer_type = Follower Follower.State.init;
+    peer_type = Follower.State.init None |> Peer_type.Follower;
     heartbeat_timeout = create_heartbeat_timer ();
     last_hearbeat = Time.now ();
     election_timeout = get_election_timeout ();
@@ -54,10 +54,10 @@ let create ~peers ~port =
     self = Peer.create ~host:"127.0.0.1" ~port;
   }
 
-let convert_to_follower t =
+let convert_to_follower t ~leader =
   let term = current_term t in
   let voted_for = None in
-  let volatile_state = Follower.State.init in
+  let volatile_state = Follower.State.init leader in
   let peer_type = Peer_type.Follower volatile_state in
   print_endline "----------------------------------";
   printf "%d: Converting to follower\n" term;
@@ -112,8 +112,8 @@ let convert_to_candidate t =
   (* let new_state = convert_if_votes new_state in *)
   reset_election_timer t
 
-let update_term_and_convert_if_outdated state term =
+let update_term_and_convert_if_outdated state term leader =
   let current_term = current_term state in
   match term > current_term with
   | false -> state
-  | true -> set_term ~term state |> convert_to_follower
+  | true -> set_term ~term state |> convert_to_follower ~leader

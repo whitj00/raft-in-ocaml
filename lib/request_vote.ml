@@ -31,7 +31,7 @@ let request_vote peer state call =
 
 let handle_request_vote peer state call =
   let term = Rpc.Request_call.term call in
-  let state = State.update_term_and_convert_if_outdated state term in
+  let state = State.update_term_and_convert_if_outdated state term None in
   let response = request_vote peer state call in
   let current_term = State.current_term state in
   let response, state =
@@ -57,7 +57,7 @@ let handle_request_vote_response peer state response =
   let open Or_error.Let_syntax in
   let term = Rpc.Request_response.term response in
   let response = Rpc.Request_response.success response in
-  let state = State.update_term_and_convert_if_outdated state term in
+  let state = State.update_term_and_convert_if_outdated state term None in
   let current_term = State.current_term state in
   match State.peer_type state with
   | Follower _ | Leader _ -> return state

@@ -1,7 +1,7 @@
 open! Core
 
 module State = struct
-  type t = unit
+  type t = { following : Host_and_port.t option }
 
-  let init = ()
+  let init following = { following }
 end
