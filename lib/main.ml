@@ -17,7 +17,9 @@ let get_election_timeout state =
 
 let handle_heartbeat_timeout state =
   match State.peer_type state with
-  | Leader _ -> Heartbeat.reset_timer state |> Heartbeat.send
+  | Leader _ ->
+      Append_entries.Heartbeat.reset_timer state
+      |> Append_entries.Heartbeat.send
   | Follower _ | Candidate _ -> Ok state |> return
 
 let handle_election_timeout state =
@@ -79,11 +81,9 @@ let handle_event host_and_port state event =
   match (event : Rpc.Event.t) with
   | Rpc.Event.ElectionTimeout -> handle_election_timeout state
   | HeartbeatTimeout -> handle_heartbeat_timeout state
-  | AppendEntriesCall call ->
-      Append_entries.handle_append_entries_call peer state call
+  | AppendEntriesCall call -> Append_entries.Call.handle peer state call
   | AppendEntriesResponse response ->
-      Append_entries.handle_append_entries_response peer state response
-      |> return
+      Append_entries.Response.handle peer state response |> return
   | RequestVoteCall call -> Request_vote.handle_request_vote peer state call
   | RequestVoteResponse response ->
       Request_vote.handle_request_vote_response peer state response |> return
