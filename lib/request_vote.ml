@@ -42,12 +42,16 @@ let handle_request_vote peer state call =
     | Ok state ->
         printf "%d: granted vote request from %s\n" current_term
           (Peer.to_string peer);
-        let response = Rpc.Request_response.create ~term:current_term ~success:true in
+        let response =
+          Rpc.Request_response.create ~term:current_term ~success:true
+        in
         (response, state)
     | Error e ->
         printf "%d: denied vote request from %s: %s\n" current_term
           (Peer.to_string peer) (Error.to_string_hum e);
-        let response = Rpc.Request_response.create ~term:current_term ~success:false in
+        let response =
+          Rpc.Request_response.create ~term:current_term ~success:false
+        in
         (response, state)
   in
   let event = response |> Rpc.Event.RequestVoteResponse in

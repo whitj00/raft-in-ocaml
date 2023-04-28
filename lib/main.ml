@@ -97,12 +97,13 @@ let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
       print_endline (Error.to_string_hum error);
       Deferred.unit
 
-let main ~port ~peer_port_1 ~peer_port_2 () =
+let main ~port ~peer_port_1 ~peer_port_2 ~peer_port_3 () =
   let peers =
     [
       Peer.create ~host:"127.0.0.1" ~port;
       Peer.create ~host:"127.0.0.1" ~port:peer_port_1;
       Peer.create ~host:"127.0.0.1" ~port:peer_port_2;
+      Peer.create ~host:"127.0.0.1" ~port:peer_port_3;
     ]
   in
   let server_state =

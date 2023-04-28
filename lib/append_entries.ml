@@ -56,12 +56,19 @@ module Call = struct
         let response, state =
           match response with
           | Ok state ->
+              printf "%d: Sending append entries success to %s\n" current_term
+                (Peer.to_string peer);
               let state = State.reset_election_timer state in
-              let response = Rpc.Append_response.create ~term:current_term ~success:true in
+              let response =
+                Rpc.Append_response.create ~term:current_term ~success:true
+              in
               (response, state)
           | Error e ->
-              print_endline (Error.to_string_hum e);
-              let response = Rpc.Append_response.create ~term:current_term ~success:false in
+              printf "%d: Sending append entries success to %s: %s\n"
+                current_term (Peer.to_string peer) (Error.to_string_hum e);
+              let response =
+                Rpc.Append_response.create ~term:current_term ~success:false
+              in
               (response, state)
         in
         let event = response |> Rpc.Event.AppendEntriesResponse in
@@ -92,7 +99,6 @@ module Heartbeat = struct
     let%bind () =
       Deferred.List.iter remote_peers ~f:(Rpc.send_event { event; from })
     in
-    printf "%d: Sent heartbeat\n" term;
     let state = State.reset_timer state in
     return (Ok state)
 end
