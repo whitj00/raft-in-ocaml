@@ -55,7 +55,7 @@ module Remote_call = struct
   let create = Fields.create
 end
 
-let raft_rpc =
+let server_rpc =
   Rpc.One_way.create ~name:"raft" ~version:0 ~bin_msg:Remote_call.bin_t
 
 let send_event event peer =
@@ -68,7 +68,7 @@ let send_event event peer =
   in
   (* Use async_rpc to send event *)
   let dispatch connection =
-    let response = Rpc.One_way.dispatch raft_rpc connection event in
+    let response = Rpc.One_way.dispatch server_rpc connection event in
     match response with
     | Error _ ->
         printf "rpcerr: message failed to send to peer %s:%d\n" host port
@@ -83,7 +83,7 @@ let send_event event peer =
 
 let start_server writer port =
   let implementation =
-    Rpc.One_way.implement raft_rpc (fun _peer event ->
+    Rpc.One_way.implement server_rpc (fun _peer event ->
         ignore (Pipe.write writer event))
   in
   Tcp.Server.create (Tcp.Where_to_listen.of_port port) ~on_handler_error:`Ignore

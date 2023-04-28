@@ -1,6 +1,5 @@
 open Core
 open Async
-module Rpc = Raft_rpc
 
 type t = {
   current_term : int;
@@ -100,13 +99,13 @@ let convert_to_candidate t =
     let last_log_index = Command_log.last_index (log t) in
     let last_log_term = Command_log.last_log_term (log t) in
     let event =
-      Rpc.Request_call.create ~term ~last_log_index ~last_log_term
-      |> Rpc.Event.RequestVoteCall
+      Server_rpc.Request_call.create ~term ~last_log_index ~last_log_term
+      |> Server_rpc.Event.RequestVoteCall
     in
     let from = self t |> Peer.to_host_and_port in
-    let request = Rpc.Remote_call.create ~event ~from in
+    let request = Server_rpc.Remote_call.create ~event ~from in
     printf "%d: Requesting votes from peers\n" term;
-    remote_nodes t |> Deferred.List.iter ~f:(Rpc.send_event request)
+    remote_nodes t |> Deferred.List.iter ~f:(Server_rpc.send_event request)
   in
   (* let new_state = convert_if_votes new_state in *)
   reset_election_timer t |> return

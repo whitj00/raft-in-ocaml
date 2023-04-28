@@ -1,7 +1,17 @@
 open Core
 
 module Command = struct
-  type t = unit [@@deriving bin_io, sexp]
+  type t = Increment | Decrement [@@deriving bin_io, sexp]
+end
+
+module State_machine = struct
+  type t = int [@@deriving bin_io, sexp]
+
+  let init () = 0
+
+  let apply t = function
+    | Command.Increment -> t + 1
+    | Command.Decrement -> t - 1
 end
 
 module Entry = struct

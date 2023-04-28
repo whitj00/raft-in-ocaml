@@ -1,19 +1,18 @@
 open Core
 open Async
-module Rpc = Raft_rpc
 
 module Call = struct
-  type t = Rpc.Append_call.t [@@deriving sexp]
+  type t = Server_rpc.Append_call.t [@@deriving sexp]
 
-  let create = Rpc.Append_call.create
+  let create = Server_rpc.Append_call.create
 
   let append_entries state (call : t) =
     let open Or_error.Let_syntax in
     let current_term = State.current_term state in
     let cmd_log = State.log state in
-    let prev_log_term = Rpc.Append_call.prev_log_index call in
+    let prev_log_term = Server_rpc.Append_call.prev_log_index call in
     let%bind () =
-      let term = Rpc.Append_call.term call in
+      let term = Server_rpc.Append_call.term call in
       match term < current_term with
       | false -> return ()
       | true ->
@@ -28,23 +27,23 @@ module Call = struct
           | Some entry -> (
               match
                 Command_log.Entry.term entry
-                = Rpc.Append_call.prev_log_term call
+                = Server_rpc.Append_call.prev_log_term call
               with
               | true -> return ()
               | false -> Or_error.errorf "Term mismatch")
           | None -> Or_error.errorf "No entry at prevLogIndex %d" prev_log_term)
     in
     let new_log =
-      let entries = Rpc.Append_call.entries call in
+      let entries = Server_rpc.Append_call.entries call in
       Command_log.append (Command_log.take cmd_log prev_log_term) entries
     in
     let new_commit_index =
-      min (Rpc.Append_call.leader_commit call) (Command_log.length new_log)
+      min (Server_rpc.Append_call.leader_commit call) (Command_log.length new_log)
     in
     return { state with log = new_log; commit_index = new_commit_index }
 
   let handle peer state call =
-    let term = Rpc.Append_call.term call in
+    let term = Server_rpc.Append_call.term call in
     let leader = Peer.to_host_and_port peer |> Some in
     let state = State.update_term_and_convert_if_outdated state term leader in
     let current_term = State.current_term state in
@@ -60,20 +59,20 @@ module Call = struct
                 (Peer.to_string peer);
               let state = State.reset_election_timer state in
               let response =
-                Rpc.Append_response.create ~term:current_term ~success:true
+                Server_rpc.Append_response.create ~term:current_term ~success:true
               in
               (response, state)
           | Error e ->
               printf "%d: Sending append entries success to %s: %s\n"
                 current_term (Peer.to_string peer) (Error.to_string_hum e);
               let response =
-                Rpc.Append_response.create ~term:current_term ~success:false
+                Server_rpc.Append_response.create ~term:current_term ~success:false
               in
               (response, state)
         in
-        let event = response |> Rpc.Event.AppendEntriesResponse in
+        let event = response |> Server_rpc.Event.AppendEntriesResponse in
         let from = State.self state |> Peer.to_host_and_port in
-        let%bind () = Rpc.send_event { event; from } peer in
+        let%bind () = Server_rpc.send_event { event; from } peer in
         Ok state |> return
     | Leader _ -> Ok state |> return
     | Candidate _ -> State.convert_to_follower state ~leader |> Ok |> return
@@ -92,12 +91,12 @@ module Heartbeat = struct
       Call.create ~term ~prev_log_index ~prev_log_term ~entries ~leader_commit
         ~leader
     in
-    let event = heartbeat |> Rpc.Event.AppendEntriesCall in
+    let event = heartbeat |> Server_rpc.Event.AppendEntriesCall in
     let from = State.self state |> Peer.to_host_and_port in
     let remote_peers = State.remote_nodes state in
     printf "%d: Sending heartbeat\n" term;
     let%bind () =
-      Deferred.List.iter remote_peers ~f:(Rpc.send_event { event; from })
+      Deferred.List.iter remote_peers ~f:(Server_rpc.send_event { event; from })
     in
     let state = State.reset_timer state in
     return (Ok state)
@@ -107,6 +106,6 @@ module Response = struct
   let handle peer state response =
     printf "%d: Append entries response from %s\n" (State.current_term state)
       (Peer.to_string peer);
-    let term = Rpc.Append_response.term response in
+    let term = Server_rpc.Append_response.term response in
     State.update_term_and_convert_if_outdated state term None |> Ok
 end

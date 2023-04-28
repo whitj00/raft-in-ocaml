@@ -1,6 +1,5 @@
 open Core
 open Async
-module Rpc = Raft_rpc
 
 let rec read_from_pipe pipe_reader =
   let%bind response = Pipe.read pipe_reader in
@@ -56,14 +55,14 @@ let rec get_next_event pipe_reader state =
   else if
     (not uses_heartbeat) && Time.Span.(election_timeout < Time.Span.of_sec 0.)
   then
-    let event = Rpc.Event.ElectionTimeout in
+    let event = Server_rpc.Event.ElectionTimeout in
     let from = State.self state |> Peer.to_host_and_port in
-    Deferred.return { Rpc.Remote_call.event; from }
+    Deferred.return { Server_rpc.Remote_call.event; from }
   else if uses_heartbeat && Time.Span.(heartbeat_timeout < Time.Span.of_sec 0.)
   then
-    let event = Rpc.Event.HeartbeatTimeout in
+    let event = Server_rpc.Event.HeartbeatTimeout in
     let from = State.self state |> Peer.to_host_and_port in
-    Deferred.return { Rpc.Remote_call.event; from }
+    Deferred.return { Server_rpc.Remote_call.event; from }
   else get_next_event pipe_reader state
 
 let handle_event host_and_port state event =
@@ -76,8 +75,8 @@ let handle_event host_and_port state event =
     match peer_opt with None -> failwith "Peer not found" | Some peer -> peer
   in
 
-  match (event : Rpc.Event.t) with
-  | Rpc.Event.ElectionTimeout -> handle_election_timeout state
+  match (event : Server_rpc.Event.t) with
+  | ElectionTimeout -> handle_election_timeout state
   | HeartbeatTimeout -> handle_heartbeat_timeout state
   | AppendEntriesCall call -> Append_entries.Call.handle peer state call
   | AppendEntriesResponse response ->
@@ -86,8 +85,8 @@ let handle_event host_and_port state event =
   | RequestVoteResponse response ->
       Request_vote.handle_request_vote_response peer state response |> return
 
-let rec event_loop (event_reader : Rpc.Remote_call.t Pipe.Reader.t) state =
-  let%bind { Rpc.Remote_call.from = peer; event } =
+let rec event_loop (event_reader : Server_rpc.Remote_call.t Pipe.Reader.t) state =
+  let%bind { Server_rpc.Remote_call.from = peer; event } =
     get_next_event event_reader state
   in
   let%bind state = handle_event peer state event in
@@ -111,9 +110,9 @@ let main ~port ~peer_port_1 ~peer_port_2 ~peer_port_3 () =
   in
   let event_pipe = Pipe.create () in
   let (event_reader, event_writer)
-        : Rpc.Remote_call.t Pipe.Reader.t * Rpc.Remote_call.t Pipe.Writer.t =
+        : Server_rpc.Remote_call.t Pipe.Reader.t * Server_rpc.Remote_call.t Pipe.Writer.t =
     event_pipe
   in
-  let%bind _server = Rpc.start_server event_writer port in
+  let%bind _server = Server_rpc.start_server event_writer port in
   let%bind () = event_loop event_reader server_state in
   return ()
