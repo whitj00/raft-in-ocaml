@@ -15,18 +15,24 @@ module Call = struct
     let%bind () =
       let term = Rpc.Append_call.term call in
       match term < current_term with
-      | true -> return ()
-      | false ->
+      | false -> return ()
+      | true ->
           Or_error.errorf "Term is too old [term: %d] [current_term: %d]" term
             current_term
     in
     let%bind () =
-      match Command_log.get_index cmd_log prev_log_term with
-      | Some entry ->
-          if Command_log.Entry.term entry = Rpc.Append_call.prev_log_term call
-          then return ()
-          else Or_error.errorf "Term mismatch"
-      | None -> Or_error.errorf "No entry at prevLogIndex"
+      match prev_log_term with
+      | -1 -> return ()
+      | _ -> (
+          match Command_log.get_index cmd_log prev_log_term with
+          | Some entry -> (
+              match
+                Command_log.Entry.term entry
+                = Rpc.Append_call.prev_log_term call
+              with
+              | true -> return ()
+              | false -> Or_error.errorf "Term mismatch")
+          | None -> Or_error.errorf "No entry at prevLogIndex %d" prev_log_term)
     in
     let new_log =
       let entries = Rpc.Append_call.entries call in
@@ -50,24 +56,23 @@ module Call = struct
         let response, state =
           match response with
           | Ok state ->
-              let response = Rpc.Append_response.create ~term ~success:true in
+              let state = State.reset_election_timer state in
+              let response = Rpc.Append_response.create ~term:current_term ~success:true in
               (response, state)
-          | Error _ ->
-              let response = Rpc.Append_response.create ~term ~success:false in
+          | Error e ->
+              print_endline (Error.to_string_hum e);
+              let response = Rpc.Append_response.create ~term:current_term ~success:false in
               (response, state)
         in
         let event = response |> Rpc.Event.AppendEntriesResponse in
         let from = State.self state |> Peer.to_host_and_port in
         let%bind () = Rpc.send_event { event; from } peer in
-        let state = State.reset_election_timer state in
         Ok state |> return
     | Leader _ -> Ok state |> return
     | Candidate _ -> State.convert_to_follower state ~leader |> Ok |> return
 end
 
 module Heartbeat = struct
-  let reset_timer state = State.set_heartbeat_timer state (Time.now ())
-
   let send state =
     let term = State.current_term state in
     let logs = State.log state in
@@ -88,7 +93,7 @@ module Heartbeat = struct
       Deferred.List.iter remote_peers ~f:(Rpc.send_event { event; from })
     in
     printf "%d: Sent heartbeat\n" term;
-    let state = reset_timer state in
+    let state = State.reset_timer state in
     return (Ok state)
 end
 

@@ -17,6 +17,5 @@ module Response : sig
 end
 
 module Heartbeat : sig
-  val reset_timer : State.t -> State.t
   val send : State.t -> (State.t, Error.t) Result.t Deferred.t
 end
