@@ -23,4 +23,3 @@ val last_log_term : t -> int
 val get_index : t -> int -> Entry.t option
 val append : t -> t -> t
 val take : t -> int -> t
-val length : t -> int

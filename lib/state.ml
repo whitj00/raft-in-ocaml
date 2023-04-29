@@ -66,12 +66,13 @@ let convert_to_follower t ~leader =
 
 let convert_to_leader t =
   let current_term = current_term t in
-  print_endline "-----------------";
+  print_endline "----------------------------------";
   printf "%d: Converting to leader\n" current_term;
-  print_endline "-----------------";
+  print_endline "----------------------------------";
   let voted_for = None in
   let peers = peers t in
-  let volatile_state = Leader.State.init peers in
+  let last_log_index = Command_log.last_index (log t) in
+  let volatile_state = Leader.State.init ~peers ~last_log_index in
   let peer_type = Peer_type.Leader volatile_state in
   { t with voted_for; peer_type; current_term }
 

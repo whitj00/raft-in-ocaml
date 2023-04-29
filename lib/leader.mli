@@ -3,7 +3,7 @@ module State : sig
 
   val match_index : t -> int Peer_db.t
   val next_index : t -> int Peer_db.t
-  val init : Peer.t list -> t
+  val init : peers:Peer.t list -> last_log_index:int -> t
   val update_next_index : t -> Peer.t -> int -> t
   val update_match_index : t -> Peer.t -> int -> t
 end

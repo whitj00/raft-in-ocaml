@@ -40,7 +40,7 @@ module Call = struct
     let new_commit_index =
       min
         (Server_rpc.Append_call.leader_commit call)
-        (Command_log.length new_log)
+        (Command_log.last_index new_log)
     in
     return { state with log = new_log; commit_index = new_commit_index }
 

@@ -4,8 +4,8 @@ module State = struct
   type t = { next_index : int Peer_db.t; match_index : int Peer_db.t }
   [@@deriving fields]
 
-  let init peers =
-    { next_index = Peer_db.init peers; match_index = Peer_db.init peers }
+  let init ~peers ~last_log_index =
+    { next_index = Peer_db.init peers (last_log_index + 1); match_index = Peer_db.init peers 0}
 
   let update_next_index t peer index =
     { t with next_index = Peer_db.update_value t.next_index peer index }
