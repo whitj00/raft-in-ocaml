@@ -18,10 +18,10 @@ type t = {
 }
 [@@deriving fields]
 
-let create_heartbeat_timer () = Time.Span.of_sec 0.1
+let create_heartbeat_timer () = Time.Span.of_sec 2.
 let set_heartbeat_timer t time = { t with last_hearbeat = time }
 let reset_timer t = set_heartbeat_timer t (Time.now ())
-let get_election_timeout () = Time.Span.of_sec (Random.float_range 1.5 3.0)
+let get_election_timeout () = Time.Span.of_sec (Random.float_range 10.0 20.0)
 
 let remote_nodes t =
   let self = self t in
@@ -115,3 +115,5 @@ let update_term_and_convert_if_outdated state term leader =
   match term > current_term with
   | false -> state
   | true -> set_term ~term state |> convert_to_follower ~leader
+
+let handle_command_call state _command = Ok state

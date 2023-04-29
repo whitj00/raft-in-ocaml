@@ -6,7 +6,6 @@ module State_machine : sig
   type t
 
   val init : unit -> t
-
   val apply : t -> Command.t -> t
 end
 

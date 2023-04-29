@@ -38,7 +38,9 @@ module Call = struct
       Command_log.append (Command_log.take cmd_log prev_log_term) entries
     in
     let new_commit_index =
-      min (Server_rpc.Append_call.leader_commit call) (Command_log.length new_log)
+      min
+        (Server_rpc.Append_call.leader_commit call)
+        (Command_log.length new_log)
     in
     return { state with log = new_log; commit_index = new_commit_index }
 
@@ -59,14 +61,16 @@ module Call = struct
                 (Peer.to_string peer);
               let state = State.reset_election_timer state in
               let response =
-                Server_rpc.Append_response.create ~term:current_term ~success:true
+                Server_rpc.Append_response.create ~term:current_term
+                  ~success:true
               in
               (response, state)
           | Error e ->
               printf "%d: Sending append entries success to %s: %s\n"
                 current_term (Peer.to_string peer) (Error.to_string_hum e);
               let response =
-                Server_rpc.Append_response.create ~term:current_term ~success:false
+                Server_rpc.Append_response.create ~term:current_term
+                  ~success:false
               in
               (response, state)
         in

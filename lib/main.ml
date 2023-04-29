@@ -84,8 +84,10 @@ let handle_event host_and_port state event =
   | RequestVoteCall call -> Request_vote.handle_request_vote peer state call
   | RequestVoteResponse response ->
       Request_vote.handle_request_vote_response peer state response |> return
+  | CommandCall command -> State.handle_command_call state command |> return
 
-let rec event_loop (event_reader : Server_rpc.Remote_call.t Pipe.Reader.t) state =
+let rec event_loop (event_reader : Server_rpc.Remote_call.t Pipe.Reader.t) state
+    =
   let%bind { Server_rpc.Remote_call.from = peer; event } =
     get_next_event event_reader state
   in
@@ -110,9 +112,11 @@ let main ~port ~peer_port_1 ~peer_port_2 ~peer_port_3 () =
   in
   let event_pipe = Pipe.create () in
   let (event_reader, event_writer)
-        : Server_rpc.Remote_call.t Pipe.Reader.t * Server_rpc.Remote_call.t Pipe.Writer.t =
+        : Server_rpc.Remote_call.t Pipe.Reader.t
+          * Server_rpc.Remote_call.t Pipe.Writer.t =
     event_pipe
   in
-  let%bind _server = Server_rpc.start_server event_writer port in
+  let%bind _server_rpc = Server_rpc.start_server event_writer port in
+  let%bind _client_rpc = Client_rpc.start_server event_writer (port + 1000) in
   let%bind () = event_loop event_reader server_state in
   return ()

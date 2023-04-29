@@ -42,6 +42,7 @@ module Event = struct
     | AppendEntriesResponse of Append_response.t
     | ElectionTimeout
     | HeartbeatTimeout
+    | CommandCall of Command_log.Command.t
   [@@deriving bin_io, sexp]
 
   let to_string t = Sexp.to_string (sexp_of_t t)

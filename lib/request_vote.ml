@@ -7,7 +7,9 @@ let request_vote peer state call =
   let current_term = State.current_term state in
   let%bind () =
     match term < current_term with
-    | true -> Or_error.errorf "Term is too old: %d" (Server_rpc.Request_call.term call)
+    | true ->
+        Or_error.errorf "Term is too old: %d"
+          (Server_rpc.Request_call.term call)
     | false -> return ()
   in
   let%bind () =
@@ -24,7 +26,9 @@ let request_vote peer state call =
         (Server_rpc.Request_call.last_log_index call)
     with
     | Some entry ->
-        if Command_log.Entry.term entry = Server_rpc.Request_call.last_log_term call
+        if
+          Command_log.Entry.term entry
+          = Server_rpc.Request_call.last_log_term call
         then return ()
         else Or_error.errorf "Log_term mismatch"
     | None -> return ()
