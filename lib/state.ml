@@ -117,4 +117,50 @@ let update_term_and_convert_if_outdated state term leader =
   | false -> state
   | true -> set_term ~term state |> convert_to_follower ~leader
 
-let handle_command_call state _command = Ok state
+let get_leader t = 
+  match peer_type t with
+  | Follower state -> Follower.State.following state
+  | Leader _ -> (self t) |> Peer.to_host_and_port |> Some
+  | Candidate _ -> None
+
+let find_peer_opt t host_and_port =
+  let peers = peers t in
+  let is_peer peer = Host_and_port.equal (Peer.to_host_and_port peer) host_and_port in
+  List.find ~f:is_peer peers
+
+let find_peer_exn t host_and_port =
+  match find_peer_opt t host_and_port with
+  | None -> failwith "Peer not found"
+  | Some peer -> peer
+
+(* If last log index ≥ nextIndex for a follower: send AppendEntries RPC with log entries starting at nextIndex *)
+
+  
+(*
+ * If leader: Append entries to log, return Ok
+ * If follower: Send command to leader, return Ok
+ * If candidate: Return error
+ *)
+let handle_command_call (state:t) (command:Command_log.Command.t) =
+  let term = current_term state in
+  let leader = get_leader state in
+  let state = update_term_and_convert_if_outdated state term leader in
+  match peer_type state with
+  | Candidate _ -> Error.of_string "Cannot handle command as candidate" |> Error |> return
+  | Leader _ -> 
+      let log = log state in
+      let entry = Command_log.Entry.create ~term ~command in
+      let log = Command_log.append_one log entry in
+      let state = { state with log } in
+      Ok state |> return
+  | Follower _ ->
+      match leader with
+      | None -> Error.of_string "No leader" |> Error |> return
+      | Some leader ->
+          let event = Server_rpc.Event.CommandCall command in
+          let from = self state |> Peer.to_host_and_port in
+          let request = Server_rpc.Remote_call.create ~event ~from in
+          let leader_peer = find_peer_exn state leader in
+          let%bind () = Server_rpc.send_event request leader_peer in
+          return (Ok state)
+

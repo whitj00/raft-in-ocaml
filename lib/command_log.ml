@@ -16,6 +16,7 @@ end
 
 module Entry = struct
   type t = { term : int; command : Command.t } [@@deriving fields, bin_io, sexp]
+  let create = Fields.create
 end
 
 type t = Entry.t list [@@deriving bin_io, sexp]
@@ -28,4 +29,5 @@ let last_log_term t =
 
 let get_index (t : t) index = List.nth t (index-1)
 let append l1 l2 = l1 @ l2
+let append_one (l1:t) (i:Entry.t) : t = l1 @ [i]
 let take t index = List.take t index

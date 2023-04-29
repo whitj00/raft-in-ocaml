@@ -13,6 +13,8 @@ module Entry : sig
   type t
 
   val term : t -> int
+  val command : t -> Command.t
+  val create : term:int -> command:Command.t -> t
 end
 
 type t [@@deriving bin_io, sexp]
@@ -22,4 +24,5 @@ val last_index : t -> int
 val last_log_term : t -> int
 val get_index : t -> int -> Entry.t option
 val append : t -> t -> t
+val append_one : t -> Entry.t -> t
 val take : t -> int -> t

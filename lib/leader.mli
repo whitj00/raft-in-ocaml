@@ -6,4 +6,6 @@ module State : sig
   val init : peers:Peer.t list -> last_log_index:int -> t
   val update_next_index : t -> Peer.t -> int -> t
   val update_match_index : t -> Peer.t -> int -> t
+  val get_next_index_exn : t -> Peer.t -> int
+  val get_match_index_exn : t -> Peer.t -> int
 end
