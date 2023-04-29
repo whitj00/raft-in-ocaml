@@ -43,3 +43,8 @@ let get_term_exn t index =
       match get_index t index with
       | Some v -> Entry.term v
       | None -> failwith "get_term_exn")
+
+let get_state t =
+  let initial_state = State_machine.init () in
+  List.fold t ~init:initial_state ~f:(fun state entry ->
+      State_machine.apply state (Entry.command entry))

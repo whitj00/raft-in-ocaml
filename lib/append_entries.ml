@@ -62,8 +62,8 @@ module Call = struct
         let response, state =
           match result with
           | Ok state ->
-              printf "%d: Sending append entries success to %s\n" term
-                (Peer.to_string peer);
+              printf "%d: Sending append entries success to %s (state: %d)\n" term
+                (Peer.to_string peer) (Command_log.get_state state.log);
               let state = State.reset_election_timer state in
               let matchIndex = Command_log.last_index state.log in
               let response =
@@ -72,8 +72,8 @@ module Call = struct
               in
               (response, state)
           | Error e ->
-              printf "%d: Sending append entries error to %s: %s\n" term
-                (Peer.to_string peer) (Error.to_string_hum e);
+              printf "%d: Sending append entries error to %s (state: %d): %s\n" term
+                (Peer.to_string peer) (Command_log.get_state state.log) (Error.to_string_hum e);
               let matchIndex = Command_log.last_index state.log in
               let response =
                 Server_rpc.Append_response.create ~term ~success:false

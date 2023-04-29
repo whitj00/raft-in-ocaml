@@ -28,3 +28,4 @@ val append_one : t -> Entry.t -> t
 val take : t -> int -> t
 val entries_from : t -> int -> t
 val get_term_exn : t -> int -> int
+val get_state : t -> int
