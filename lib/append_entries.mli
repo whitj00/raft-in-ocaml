@@ -16,7 +16,7 @@ module Response : sig
     Peer.t ->
     State.t ->
     Server_rpc.Append_response.t ->
-    (State.t, Error.t) result
+    (State.t, Error.t) result Deferred.t
 end
 
 module Heartbeat : sig

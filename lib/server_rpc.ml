@@ -15,7 +15,8 @@ module Append_call = struct
 end
 
 module Append_response = struct
-  type t = { term : int; success : bool } [@@deriving fields, bin_io, sexp]
+  type t = { term : int; success : bool; matchIndex : int }
+  [@@deriving fields, bin_io, sexp]
 
   let create = Fields.create
 end

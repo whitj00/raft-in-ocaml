@@ -85,7 +85,7 @@ let handle_event host_and_port state event =
   | HeartbeatTimeout -> handle_heartbeat_timeout state
   | AppendEntriesCall call -> Append_entries.Call.handle peer state call
   | AppendEntriesResponse response ->
-      Append_entries.Response.handle peer state response |> return
+      Append_entries.Response.handle peer state response
   | RequestVoteCall call -> Request_vote.handle_request_vote peer state call
   | RequestVoteResponse response ->
       Request_vote.handle_request_vote_response peer state response |> return

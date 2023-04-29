@@ -49,33 +49,35 @@ module Call = struct
     let term = Server_rpc.Append_call.term call in
     let leader = Peer.to_host_and_port peer |> Some in
     let state = State.update_term_and_convert_if_outdated state term leader in
-    let current_term = State.current_term state in
-    printf "%d: Received append entries from %s\n" current_term
-      (Peer.to_string peer);
+    let term = State.current_term state in
+    printf "%d: Received append entries from %s\n" term (Peer.to_string peer);
     match State.peer_type state with
     | Follower follower_state ->
-        let state = match Follower.State.is_following follower_state leader with
-          | true -> state 
+        let state =
+          match Follower.State.is_following follower_state leader with
+          | true -> state
           | false -> State.convert_to_follower state ~leader
         in
-        let response = append_entries state call in
+        let result = append_entries state call in
         let response, state =
-          match response with
+          match result with
           | Ok state ->
-              printf "%d: Sending append entries success to %s\n" current_term
+              printf "%d: Sending append entries success to %s\n" term
                 (Peer.to_string peer);
               let state = State.reset_election_timer state in
+              let matchIndex = Command_log.last_index state.log in
               let response =
-                Server_rpc.Append_response.create ~term:current_term
-                  ~success:true
+                Server_rpc.Append_response.create ~term ~success:true
+                  ~matchIndex
               in
               (response, state)
           | Error e ->
-              printf "%d: Sending append entries error to %s: %s\n" current_term
+              printf "%d: Sending append entries error to %s: %s\n" term
                 (Peer.to_string peer) (Error.to_string_hum e);
+              let matchIndex = Command_log.last_index state.log in
               let response =
-                Server_rpc.Append_response.create ~term:current_term
-                  ~success:false
+                Server_rpc.Append_response.create ~term ~success:false
+                  ~matchIndex
               in
               (response, state)
         in
@@ -110,9 +112,25 @@ module Heartbeat = struct
 end
 
 module Response = struct
+  type t = Server_rpc.Append_response.t [@@deriving sexp]
+
   let handle peer state response =
-    printf "%d: Append entries response from %s\n" (State.current_term state)
-      (Peer.to_string peer);
+    let success = Server_rpc.Append_response.success response in
     let term = Server_rpc.Append_response.term response in
-    State.update_term_and_convert_if_outdated state term None |> Ok
+    let state = State.update_term_and_convert_if_outdated state term None in
+    let matchIndex = Server_rpc.Append_response.matchIndex response in
+    match State.peer_type state with
+    | Follower _ | Candidate _ -> Ok state |> return
+    | Leader leader_state ->
+      let leader_state = Leader.State.update_match_index leader_state peer matchIndex in
+      let leader_state = Leader.State.update_next_index leader_state peer (matchIndex+1) in
+      let state = { state with peer_type = Leader leader_state } in
+      match success with
+      | false ->
+        printf "%d: Append entries failure from %s (matchIndex: %d)\n" (State.current_term state) (Peer.to_string peer) matchIndex;
+        let%bind () = State.update_peers state in
+          Ok state |> return
+      | true ->
+          printf "%d: Append entries success from %s (matchIndex: %d)\n" (State.current_term state) (Peer.to_string peer) matchIndex;
+          Ok state |> return
 end
