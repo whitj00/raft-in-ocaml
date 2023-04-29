@@ -10,7 +10,7 @@ module Call = struct
     let open Or_error.Let_syntax in
     let current_term = State.current_term state in
     let cmd_log = State.log state in
-    let prev_log_term = Server_rpc.Append_call.prev_log_index call in
+    let prev_log_index = Server_rpc.Append_call.prev_log_index call in
     let%bind () =
       let term = Server_rpc.Append_call.term call in
       match term < current_term with
@@ -20,10 +20,10 @@ module Call = struct
             current_term
     in
     let%bind () =
-      match prev_log_term with
-      | -1 -> return ()
+      match prev_log_index with
+      | 0 -> return ()
       | _ -> (
-          match Command_log.get_index cmd_log prev_log_term with
+          match Command_log.get_index cmd_log prev_log_index with
           | Some entry -> (
               match
                 Command_log.Entry.term entry
@@ -31,11 +31,12 @@ module Call = struct
               with
               | true -> return ()
               | false -> Or_error.errorf "Term mismatch")
-          | None -> Or_error.errorf "No entry at prevLogIndex %d" prev_log_term)
+          | None -> Or_error.errorf "No entry at prevLogIndex %d" prev_log_index
+          )
     in
     let new_log =
       let entries = Server_rpc.Append_call.entries call in
-      Command_log.append (Command_log.take cmd_log prev_log_term) entries
+      Command_log.append (Command_log.take cmd_log prev_log_index) entries
     in
     let new_commit_index =
       min
@@ -52,7 +53,11 @@ module Call = struct
     printf "%d: Received append entries from %s\n" current_term
       (Peer.to_string peer);
     match State.peer_type state with
-    | Follower _ ->
+    | Follower follower_state ->
+        let state = match Follower.State.is_following follower_state leader with
+          | true -> state 
+          | false -> State.convert_to_follower state ~leader
+        in
         let response = append_entries state call in
         let response, state =
           match response with
@@ -66,8 +71,8 @@ module Call = struct
               in
               (response, state)
           | Error e ->
-              printf "%d: Sending append entries success to %s: %s\n"
-                current_term (Peer.to_string peer) (Error.to_string_hum e);
+              printf "%d: Sending append entries error to %s: %s\n" current_term
+                (Peer.to_string peer) (Error.to_string_hum e);
               let response =
                 Server_rpc.Append_response.create ~term:current_term
                   ~success:false
@@ -90,10 +95,8 @@ module Heartbeat = struct
     let prev_log_term = Command_log.last_log_term logs in
     let entries = Command_log.init () in
     let leader_commit = State.commit_index state in
-    let leader = State.self state |> Peer.to_host_and_port in
     let heartbeat =
       Call.create ~term ~prev_log_index ~prev_log_term ~entries ~leader_commit
-        ~leader
     in
     let event = heartbeat |> Server_rpc.Event.AppendEntriesCall in
     let from = State.self state |> Peer.to_host_and_port in

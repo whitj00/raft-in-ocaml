@@ -72,7 +72,12 @@ let handle_event host_and_port state event =
       List.find peers ~f:(fun peer ->
           Host_and_port.equal (Peer.to_host_and_port peer) host_and_port)
     in
-    match peer_opt with None -> failwith "Peer not found" | Some peer -> peer
+    match peer_opt with
+    | None ->
+        failwith
+          (sprintf "handle_event: Peer not found %s\n"
+             (Host_and_port.to_string host_and_port))
+    | Some peer -> peer
   in
 
   match (event : Server_rpc.Event.t) with
@@ -117,6 +122,9 @@ let main ~port ~peer_port_1 ~peer_port_2 ~peer_port_3 () =
     event_pipe
   in
   let%bind _server_rpc = Server_rpc.start_server event_writer port in
-  let%bind _client_rpc = Client_rpc.start_server event_writer (port + 1000) in
+  let self = State.self server_state |> Peer.to_host_and_port in
+  let%bind _client_rpc =
+    Client_rpc.start_server self event_writer (port + 1000)
+  in
   let%bind () = event_loop event_reader server_state in
   return ()

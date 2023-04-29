@@ -59,8 +59,11 @@ let convert_to_follower t ~leader =
   let voted_for = None in
   let volatile_state = Follower.State.init leader in
   let peer_type = Peer_type.Follower volatile_state in
+  let leader_str =
+    Option.value_map ~default:"None" ~f:Host_and_port.to_string leader
+  in
   print_endline "----------------------------------";
-  printf "%d: Converting to follower\n" term;
+  printf "%d: Converting to follower (leader: %s)\n" term leader_str;
   print_endline "----------------------------------";
   { t with voted_for; peer_type } |> reset_election_timer
 
@@ -117,43 +120,86 @@ let update_term_and_convert_if_outdated state term leader =
   | false -> state
   | true -> set_term ~term state |> convert_to_follower ~leader
 
-let get_leader t = 
+let get_leader t =
   match peer_type t with
   | Follower state -> Follower.State.following state
-  | Leader _ -> (self t) |> Peer.to_host_and_port |> Some
+  | Leader _ -> self t |> Peer.to_host_and_port |> Some
   | Candidate _ -> None
 
 let find_peer_opt t host_and_port =
   let peers = peers t in
-  let is_peer peer = Host_and_port.equal (Peer.to_host_and_port peer) host_and_port in
+  let is_peer peer =
+    Host_and_port.equal (Peer.to_host_and_port peer) host_and_port
+  in
   List.find ~f:is_peer peers
 
 let find_peer_exn t host_and_port =
   match find_peer_opt t host_and_port with
-  | None -> failwith "Peer not found"
+  | None ->
+      failwith
+        (sprintf "find_peer_exn: Peer not found %s\n"
+           (Host_and_port.to_string host_and_port))
   | Some peer -> peer
 
-(* If last log index ≥ nextIndex for a follower: send AppendEntries RPC with log entries starting at nextIndex *)
+(* If last log index ≥ nextIndex for a follower: send AppendEntries RPC with log
+   entries starting at nextIndex *)
+let update_peers state =
+  match peer_type state with
+  | Follower _ | Candidate _ -> return ()
+  | Leader leader_state ->
+      let command_log = log state in
+      let term = current_term state in
+      let last_log_index = Command_log.last_index command_log in
+      let is_outdated peer =
+        let next_index = Leader.State.get_next_index_exn leader_state peer in
+        last_log_index >= next_index
+      in
+      let outdated_peers = List.filter ~f:is_outdated (remote_nodes state) in
+      let get_log_entries_after_match_index peer =
+        let next_index = Leader.State.get_next_index_exn leader_state peer in
+        (peer, Command_log.entries_from command_log next_index, next_index)
+      in
+      let log_entries =
+        List.map ~f:get_log_entries_after_match_index outdated_peers
+      in
+      Deferred.List.iter log_entries ~f:(fun (peer, entries, next_index) ->
+          let prev_log_index = next_index - 1 in
+          let prev_log_term =
+            Command_log.get_term_exn command_log prev_log_index
+          in
+          let leader_commit = commit_index state in
+          let event =
+            Server_rpc.Append_call.create ~term ~prev_log_index ~prev_log_term
+              ~entries ~leader_commit
+            |> Server_rpc.Event.AppendEntriesCall
+          in
+          let from = self state |> Peer.to_host_and_port in
+          let request = Server_rpc.Remote_call.create ~event ~from in
+          printf "%d: Sending append entries to %s from %s\n" term
+            (Peer.to_string peer)
+            (Host_and_port.to_string from);
+          Server_rpc.send_event request peer)
 
-  
 (*
  * If leader: Append entries to log, return Ok
  * If follower: Send command to leader, return Ok
  * If candidate: Return error
  *)
-let handle_command_call (state:t) (command:Command_log.Command.t) =
+let handle_command_call (state : t) (command : Command_log.Command.t) =
   let term = current_term state in
   let leader = get_leader state in
   let state = update_term_and_convert_if_outdated state term leader in
   match peer_type state with
-  | Candidate _ -> Error.of_string "Cannot handle command as candidate" |> Error |> return
-  | Leader _ -> 
+  | Candidate _ ->
+      Error.of_string "Cannot handle command as candidate" |> Error |> return
+  | Leader _ ->
       let log = log state in
       let entry = Command_log.Entry.create ~term ~command in
       let log = Command_log.append_one log entry in
       let state = { state with log } in
+      let%bind () = update_peers state in
       Ok state |> return
-  | Follower _ ->
+  | Follower _ -> (
       match leader with
       | None -> Error.of_string "No leader" |> Error |> return
       | Some leader ->
@@ -162,5 +208,4 @@ let handle_command_call (state:t) (command:Command_log.Command.t) =
           let request = Server_rpc.Remote_call.create ~event ~from in
           let leader_peer = find_peer_exn state leader in
           let%bind () = Server_rpc.send_event request leader_peer in
-          return (Ok state)
-
+          return (Ok state))
