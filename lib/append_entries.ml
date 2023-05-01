@@ -43,7 +43,9 @@ module Call = struct
         (Server_rpc.Append_call.leader_commit call)
         (Command_log.last_index new_log)
     in
-    return { state with log = new_log; commit_index = new_commit_index }
+    let state = { state with log = new_log; commit_index = new_commit_index } in
+    let state = State.update_peer_list state in
+    return state
 
   let handle peer state call =
     let term = Server_rpc.Append_call.term call in
@@ -62,9 +64,12 @@ module Call = struct
         let response, state =
           match result with
           | Ok state ->
-              printf "%d: Sending append entries success to %s (state: %d)\n"
+              printf
+                "%d: Sending append entries success to %s (state: %d) (log \
+                 length: %d)\n"
                 term (Peer.to_string peer)
-                (Command_log.get_state state.log);
+                (Command_log.get_state state.log)
+                (Command_log.length state.log);
               let state = State.reset_election_timer state in
               let matchIndex = Command_log.last_index state.log in
               let response =
@@ -73,9 +78,12 @@ module Call = struct
               in
               (response, state)
           | Error e ->
-              printf "%d: Sending append entries error to %s (state: %d): %s\n"
+              printf
+                "%d: Sending append entries error to %s (state: %d) (log \
+                 length: %d): %s\n"
                 term (Peer.to_string peer)
                 (Command_log.get_state state.log)
+                (Command_log.length state.log)
                 (Error.to_string_hum e);
               let matchIndex = Command_log.last_index state.log in
               let response =
@@ -106,7 +114,7 @@ module Heartbeat = struct
     let event = heartbeat |> Server_rpc.Event.AppendEntriesCall in
     let from = State.self state |> Peer.to_host_and_port in
     let remote_peers = State.remote_nodes state in
-    printf "%d: Sending heartbeat\n" term;
+    printf "%d: Sending heartbeat (peers: %d)\n" term (List.length remote_peers);
     let%bind () =
       Deferred.List.iter remote_peers ~f:(Server_rpc.send_event { event; from })
     in
@@ -135,11 +143,15 @@ module Response = struct
         match success with
         | false ->
             printf "%d: Append entries failure from %s (matchIndex: %d)\n"
-              (State.current_term state) (Peer.to_string peer) matchIndex;
+              (State.current_term state)
+              (Host_and_port.to_string peer)
+              matchIndex;
             let%bind () = State.update_peers state in
             Ok state |> return
         | true ->
             printf "%d: Append entries success from %s (matchIndex: %d)\n"
-              (State.current_term state) (Peer.to_string peer) matchIndex;
+              (State.current_term state)
+              (Host_and_port.to_string peer)
+              matchIndex;
             Ok state |> return)
 end

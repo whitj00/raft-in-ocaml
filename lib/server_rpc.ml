@@ -35,7 +35,7 @@ module Request_response = struct
 end
 
 module Add_server_call = struct
-  type t = { term : int; host : string; port : int }
+  type t = { term : int; host_and_port : Host_and_port.t }
   [@@deriving fields, bin_io, sexp]
 
   let create = Fields.create
@@ -103,7 +103,5 @@ let start_server writer port =
              ~implementations:[ implementation ])
         ~connection_state:(fun _ ->
           let host_and_port = Socket.Address.Inet.to_host_and_port remote in
-          let host = Host_and_port.host host_and_port in
-          let port = Host_and_port.port host_and_port in
-          Peer.create ~host ~port)
+          Peer.create ~host_and_port)
         ~on_handshake_error:`Ignore)

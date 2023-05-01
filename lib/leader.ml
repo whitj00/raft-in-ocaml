@@ -10,6 +10,12 @@ module State = struct
       match_index = Peer_db.init peers 0;
     }
 
+  let add_peer t peer ~last_log_index =
+    {
+      next_index = Peer_db.add_peer t.next_index peer (last_log_index + 1);
+      match_index = Peer_db.add_peer t.match_index peer 0;
+    }
+
   let update_next_index t peer index =
     { t with next_index = Peer_db.update_value t.next_index peer index }
 

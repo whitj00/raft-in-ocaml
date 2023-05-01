@@ -85,12 +85,12 @@ let handle_event host_and_port state event =
   | HeartbeatTimeout -> handle_heartbeat_timeout state
   | AppendEntriesCall call -> Append_entries.Call.handle peer state call
   | AppendEntriesResponse response ->
-      Append_entries.Response.handle peer state response
+      Append_entries.Response.handle host_and_port state response
   | RequestVoteCall call -> Request_vote.handle_request_vote peer state call
   | RequestVoteResponse response ->
       Request_vote.handle_request_vote_response peer state response |> return
   | CommandCall command -> State.handle_command_call state command
-  | AddServerCall _ -> failwith "AddServerCall not implemented"
+  | AddServerCall call -> Add_server.Call.handle state call
 
 let rec event_loop (event_reader : Server_rpc.Remote_call.t Pipe.Reader.t) state
     =
@@ -105,12 +105,17 @@ let rec event_loop (event_reader : Server_rpc.Remote_call.t Pipe.Reader.t) state
       Deferred.unit
 
 let main ~port ~peer_port_1 ~peer_port_2 ~peer_port_3 () =
+  let create_local ~port =
+    let host = "127.0.0.1" in
+    let host_and_port = Host_and_port.create ~host ~port in
+    Peer.create ~host_and_port
+  in
   let peers =
     [
-      Peer.create ~host:"127.0.0.1" ~port;
-      Peer.create ~host:"127.0.0.1" ~port:peer_port_1;
-      Peer.create ~host:"127.0.0.1" ~port:peer_port_2;
-      Peer.create ~host:"127.0.0.1" ~port:peer_port_3;
+      create_local ~port;
+      create_local ~port:peer_port_1;
+      create_local ~port:peer_port_2;
+      create_local ~port:peer_port_3;
     ]
   in
   let server_state =

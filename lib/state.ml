@@ -28,6 +28,36 @@ let remote_nodes t =
   let is_not_self peer = not (Peer.equal self peer) in
   List.filter ~f:is_not_self (peers t)
 
+let add_peer t peer =
+  let peers = peers t in
+  let is_not_in_peers peer = not (List.mem ~equal:Peer.equal peers peer) in
+  match is_not_in_peers peer with
+  | false -> t
+  | true -> (
+      let t = { t with peers = peer :: peers } in
+      match peer_type t with
+      | Follower _ | Candidate _ -> t
+      | Leader leader_state ->
+          let last_log_index = Command_log.last_index (log t) - 1 in
+          let host_and_port = Peer.to_host_and_port peer in
+          let leader_state =
+            Leader.State.add_peer leader_state ~last_log_index host_and_port
+          in
+          { t with peer_type = Peer_type.Leader leader_state })
+
+let add_peer_from_host_and_port t host_and_port =
+  let hosts = peers t |> List.map ~f:Peer.to_host_and_port in
+  let is_not_in_hosts =
+    not (List.mem ~equal:Host_and_port.equal hosts host_and_port)
+  in
+  match is_not_in_hosts with
+  | true -> add_peer t (Peer.create ~host_and_port)
+  | false -> t
+
+let update_peer_list t =
+  let command_log_peers = Command_log.get_unique_peers (log t) in
+  List.fold ~f:add_peer_from_host_and_port ~init:t command_log_peers
+
 let reset_election_timer t =
   {
     t with
@@ -51,7 +81,9 @@ let create ~peers ~port =
     election_timeout = get_election_timeout ();
     last_election = Time.now ();
     started_at = Time.now ();
-    self = Peer.create ~host:"127.0.0.1" ~port;
+    self =
+      (let host_and_port = Host_and_port.create ~host:"127.0.0.1" ~port in
+       Peer.create ~host_and_port);
   }
 
 let convert_to_follower t ~leader =
@@ -195,8 +227,9 @@ let handle_command_call (state : t) (command : Command_log.Command.t) =
   | Leader _ ->
       let log = log state in
       let entry = Command_log.Entry.create ~term ~command in
-      let log = Command_log.append_one log entry in
+      let log = Command_log.append_one entry log in
       let state = { state with log } in
+      let state = update_peer_list state in
       let%bind () = update_peers state in
       Ok state |> return
   | Follower _ -> (

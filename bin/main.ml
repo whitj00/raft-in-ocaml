@@ -28,9 +28,24 @@ let decrement =
        Raft.Client_rpc.send_command Raft.Command_log.Command.Decrement
          host_and_port)
 
+let add_server =
+  Command.async ~summary:"Send a message to a raft server"
+    (let%map_open.Command host_and_port =
+       flag "-node" (required host_and_port) ~doc:" host to connect to"
+     and new_server =
+       flag "-new-server" (required host_and_port) ~doc:" host to connect to"
+     in
+     fun () ->
+       Raft.Client_rpc.send_command
+         (Raft.Command_log.Command.AddServer new_server) host_and_port)
+
 let client =
   Command.group ~summary:"Client commands"
-    [ ("increment", increment); ("decrement", decrement) ]
+    [
+      ("increment", increment);
+      ("decrement", decrement);
+      ("add-server", add_server);
+    ]
 
 let () =
   Command_unix.run

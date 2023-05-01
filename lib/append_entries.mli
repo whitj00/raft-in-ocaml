@@ -13,7 +13,7 @@ end
 
 module Response : sig
   val handle :
-    Peer.t ->
+    Host_and_port.t ->
     State.t ->
     Server_rpc.Append_response.t ->
     (State.t, Error.t) result Deferred.t

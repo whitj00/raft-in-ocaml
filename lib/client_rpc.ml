@@ -41,14 +41,10 @@ let start_server self writer port =
         return response)
   in
   Tcp.Server.create (Tcp.Where_to_listen.of_port port) ~on_handler_error:`Ignore
-    (fun remote reader writer ->
+    (fun _remote reader writer ->
       Rpc.Connection.server_with_close reader writer
         ~implementations:
           (Rpc.Implementations.create_exn ~on_unknown_rpc:`Raise
              ~implementations:[ implementation ])
-        ~connection_state:(fun _ ->
-          let host_and_port = Socket.Address.Inet.to_host_and_port remote in
-          let host = Host_and_port.host host_and_port in
-          let port = Host_and_port.port host_and_port in
-          Peer.create ~host ~port)
+        ~connection_state:(fun _ -> ())
         ~on_handshake_error:`Ignore)
