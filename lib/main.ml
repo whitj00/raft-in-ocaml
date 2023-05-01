@@ -90,6 +90,7 @@ let handle_event host_and_port state event =
   | RequestVoteResponse response ->
       Request_vote.handle_request_vote_response peer state response |> return
   | CommandCall command -> State.handle_command_call state command
+  | AddServerCall _ -> failwith "AddServerCall not implemented"
 
 let rec event_loop (event_reader : Server_rpc.Remote_call.t Pipe.Reader.t) state
     =
