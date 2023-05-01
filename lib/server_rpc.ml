@@ -43,7 +43,6 @@ end
 
 module Event = struct
   type t =
-    | AddServerCall of Add_server_call.t
     | RequestVoteCall of Request_call.t
     | RequestVoteResponse of Request_response.t
     | AppendEntriesCall of Append_call.t
