@@ -62,8 +62,9 @@ module Call = struct
         let response, state =
           match result with
           | Ok state ->
-              printf "%d: Sending append entries success to %s (state: %d)\n" term
-                (Peer.to_string peer) (Command_log.get_state state.log);
+              printf "%d: Sending append entries success to %s (state: %d)\n"
+                term (Peer.to_string peer)
+                (Command_log.get_state state.log);
               let state = State.reset_election_timer state in
               let matchIndex = Command_log.last_index state.log in
               let response =
@@ -72,8 +73,10 @@ module Call = struct
               in
               (response, state)
           | Error e ->
-              printf "%d: Sending append entries error to %s (state: %d): %s\n" term
-                (Peer.to_string peer) (Command_log.get_state state.log) (Error.to_string_hum e);
+              printf "%d: Sending append entries error to %s (state: %d): %s\n"
+                term (Peer.to_string peer)
+                (Command_log.get_state state.log)
+                (Error.to_string_hum e);
               let matchIndex = Command_log.last_index state.log in
               let response =
                 Server_rpc.Append_response.create ~term ~success:false
@@ -121,16 +124,22 @@ module Response = struct
     let matchIndex = Server_rpc.Append_response.matchIndex response in
     match State.peer_type state with
     | Follower _ | Candidate _ -> Ok state |> return
-    | Leader leader_state ->
-      let leader_state = Leader.State.update_match_index leader_state peer matchIndex in
-      let leader_state = Leader.State.update_next_index leader_state peer (matchIndex+1) in
-      let state = { state with peer_type = Leader leader_state } in
-      match success with
-      | false ->
-        printf "%d: Append entries failure from %s (matchIndex: %d)\n" (State.current_term state) (Peer.to_string peer) matchIndex;
-        let%bind () = State.update_peers state in
-          Ok state |> return
-      | true ->
-          printf "%d: Append entries success from %s (matchIndex: %d)\n" (State.current_term state) (Peer.to_string peer) matchIndex;
-          Ok state |> return
+    | Leader leader_state -> (
+        let leader_state =
+          Leader.State.update_match_index leader_state peer matchIndex
+        in
+        let leader_state =
+          Leader.State.update_next_index leader_state peer (matchIndex + 1)
+        in
+        let state = { state with peer_type = Leader leader_state } in
+        match success with
+        | false ->
+            printf "%d: Append entries failure from %s (matchIndex: %d)\n"
+              (State.current_term state) (Peer.to_string peer) matchIndex;
+            let%bind () = State.update_peers state in
+            Ok state |> return
+        | true ->
+            printf "%d: Append entries success from %s (matchIndex: %d)\n"
+              (State.current_term state) (Peer.to_string peer) matchIndex;
+            Ok state |> return)
 end
