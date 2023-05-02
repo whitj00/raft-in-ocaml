@@ -66,6 +66,7 @@ let rec get_next_event pipe_reader state =
   else get_next_event pipe_reader state
 
 let handle_event host_and_port state event =
+  let state = State.convert_if_votes state  in
   let peer =
     let peers = State.peers state in
     let peer_opt =
@@ -74,9 +75,7 @@ let handle_event host_and_port state event =
     in
     match peer_opt with
     | None ->
-        failwith
-          (sprintf "handle_event: Peer not found %s\n"
-             (Host_and_port.to_string host_and_port))
+        Peer.create ~host_and_port
     | Some peer -> peer
   in
 
@@ -103,19 +102,21 @@ let rec event_loop (event_reader : Server_rpc.Remote_call.t Pipe.Reader.t) state
       print_endline (Error.to_string_hum error);
       Deferred.unit
 
-let main ~port ~peer_port_1 ~peer_port_2 ~peer_port_3 () =
-  let create_local ~port =
-    let host = "127.0.0.1" in
-    let host_and_port = Host_and_port.create ~host ~port in
+let main ~port ~host ~(bootstrap : Host_and_port.t option) () =
+  let create_host ~hostname ~port =
+    let host_and_port = Host_and_port.create ~host:hostname ~port in
     Peer.create ~host_and_port
   in
-  let peers =
-    [
-      create_local ~port;
-      create_local ~port:peer_port_1;
-      create_local ~port:peer_port_2;
-      create_local ~port:peer_port_3;
-    ]
+  let local = create_host ~hostname:host ~port in
+  let%bind peers =
+    match bootstrap with
+    | Some bootstrap -> 
+      let event = Command_log.Command.AddServer bootstrap |> Server_rpc.Event.CommandCall in
+      let remote_call = {Server_rpc.Remote_call.event; from = local |> Peer.to_host_and_port} in
+      let bootstrap_peer = Peer.create ~host_and_port:bootstrap in
+      let%bind () = Server_rpc.send_event_blocking remote_call bootstrap_peer in
+      return [ local; bootstrap_peer ]
+    | None -> return [ local ]
   in
   let server_state =
     State.create ~peers ~port |> State.convert_to_follower ~leader:None

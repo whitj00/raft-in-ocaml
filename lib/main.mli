@@ -3,8 +3,7 @@ open Async
 
 val main :
   port:int ->
-  peer_port_1:int ->
-  peer_port_2:int ->
-  peer_port_3:int ->
+  host:string ->
+  bootstrap:Host_and_port.t option ->
   unit ->
   unit Deferred.t

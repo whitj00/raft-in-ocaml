@@ -89,6 +89,33 @@ let send_event event peer =
       printf "connerr: connection failed to peer %s:%d\n" host port |> return
   | Some connection -> dispatch connection
 
+  let send_event_blocking event peer =
+    let host = Peer.host peer in
+    let port = Peer.port peer in
+    let conn =
+      match Peer.conn peer with
+      | Some conn -> conn
+      | None -> failwith "conn not set"
+    in
+    (* Use async_rpc to send event *)
+    let dispatch connection =
+      let response = Rpc.One_way.dispatch server_rpc connection event in
+      match response with
+      | Error _ ->
+          printf "rpcerr: message failed to send to peer %s:%d\n" host port
+          |> return
+      | Ok () -> return ()
+    in
+    let%bind conn_res = Persistent_connection.Rpc.connected_or_failed_to_connect conn in
+    match conn_res with
+    | Error _ ->
+        printf "connerr: connection failed to peer %s:%d\n" host port |> return
+    | Ok connection -> dispatch connection
+    
+
+
+
+  
 let start_server writer port =
   let implementation =
     Rpc.One_way.implement server_rpc (fun _peer event ->
