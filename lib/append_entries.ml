@@ -66,10 +66,11 @@ module Call = struct
           | Ok state ->
               printf
                 "%d: Sending append entries success to %s (state: %d) (log \
-                 length: %d)\n"
+                 length: %d) (peers: %d)\n"
                 term (Peer.to_string peer)
                 (Command_log.get_state state.log)
-                (Command_log.length state.log);
+                (Command_log.length state.log)
+                (List.length (State.remote_nodes state));
               let state = State.reset_election_timer state in
               let matchIndex = Command_log.last_index state.log in
               let response =
@@ -80,10 +81,11 @@ module Call = struct
           | Error e ->
               printf
                 "%d: Sending append entries error to %s (state: %d) (log \
-                 length: %d): %s\n"
+                 length: %d) (peers: %d): %s\n"
                 term (Peer.to_string peer)
                 (Command_log.get_state state.log)
                 (Command_log.length state.log)
+                (List.length (State.remote_nodes state))
                 (Error.to_string_hum e);
               let matchIndex = Command_log.last_index state.log in
               let response =

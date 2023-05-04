@@ -18,10 +18,10 @@ type t = {
 }
 [@@deriving fields]
 
-let create_heartbeat_timer () = Time.Span.of_sec 2.
+let create_heartbeat_timer () = Time.Span.of_sec 0.5
 let set_heartbeat_timer t time = { t with last_hearbeat = time }
 let reset_timer t = set_heartbeat_timer t (Time.now ())
-let get_election_timeout () = Time.Span.of_sec (Random.float_range 10.0 20.0)
+let get_election_timeout () = Time.Span.of_sec (Random.float_range 3.0 6.0)
 
 let remote_nodes t =
   let self = self t in
@@ -229,6 +229,7 @@ let handle_command_call (state : t) (command : Command_log.Command.t) =
       let entry = Command_log.Entry.create ~term ~command in
       let log = Command_log.append_one entry log in
       let state = { state with log } in
+      printf "%d: Appended command to log\n" term;
       let state = update_peer_list state in
       let%bind () = update_peers state in
       Ok state |> return

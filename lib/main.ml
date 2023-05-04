@@ -66,17 +66,24 @@ let rec get_next_event pipe_reader state =
   else get_next_event pipe_reader state
 
 let handle_event host_and_port state event =
-  let state = State.convert_if_votes state  in
-  let peer =
+  let state = State.convert_if_votes state |> State.update_peer_list in
+  let%bind peer =
     let peers = State.peers state in
     let peer_opt =
       List.find peers ~f:(fun peer ->
           Host_and_port.equal (Peer.to_host_and_port peer) host_and_port)
     in
-    match peer_opt with
-    | None ->
-        Peer.create ~host_and_port
-    | Some peer -> peer
+    let peer =
+      match peer_opt with
+      | None -> Peer.create ~host_and_port
+      | Some peer -> peer
+    in
+    let conn = Peer.conn peer |> Option.value_exn in
+    (* Connect to the peer *)
+    let%bind _ =
+      Persistent_connection.Rpc.connected_or_failed_to_connect conn
+    in
+    return peer
   in
 
   match (event : Server_rpc.Event.t) with
@@ -110,16 +117,38 @@ let main ~port ~host ~(bootstrap : Host_and_port.t option) () =
   let local = create_host ~hostname:host ~port in
   let%bind peers =
     match bootstrap with
-    | Some bootstrap -> 
-      let event = Command_log.Command.AddServer bootstrap |> Server_rpc.Event.CommandCall in
-      let remote_call = {Server_rpc.Remote_call.event; from = local |> Peer.to_host_and_port} in
-      let bootstrap_peer = Peer.create ~host_and_port:bootstrap in
-      let%bind () = Server_rpc.send_event_blocking remote_call bootstrap_peer in
-      return [ local; bootstrap_peer ]
+    | Some bootstrap ->
+        let event =
+          Command_log.Command.AddServer (local |> Peer.to_host_and_port)
+          |> Server_rpc.Event.CommandCall
+        in
+        let remote_call =
+          {
+            Server_rpc.Remote_call.event;
+            from = local |> Peer.to_host_and_port;
+          }
+        in
+        let bootstrap_peer = Peer.create ~host_and_port:bootstrap in
+        let%bind () =
+          Server_rpc.send_event_blocking remote_call bootstrap_peer
+        in
+        return [ local; bootstrap_peer ]
     | None -> return [ local ]
   in
   let server_state =
-    State.create ~peers ~port |> State.convert_to_follower ~leader:None
+    match bootstrap with
+    | None ->
+        let state = State.create ~peers ~port |> State.convert_to_leader in
+        let log =
+          Command_log.append_one
+            (Command_log.Entry.create ~term:0
+               ~command:
+                 (Command_log.Command.AddServer (local |> Peer.to_host_and_port)))
+            state.log
+        in
+        { state with log }
+    | Some _ ->
+        State.create ~peers ~port |> State.convert_to_follower ~leader:None
   in
   let event_pipe = Pipe.create () in
   let (event_reader, event_writer)
