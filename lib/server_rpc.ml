@@ -86,7 +86,9 @@ let send_event event peer =
   let conn_res = Persistent_connection.Rpc.current_connection conn in
   match conn_res with
   | None ->
-      printf "connerr in send_event: connection failed to peer %s:%d\n" host port |> return
+      printf "connerr in send_event: connection failed to peer %s:%d\n" host
+        port
+      |> return
   | Some connection -> dispatch connection
 
 let send_event_blocking event peer =
@@ -111,7 +113,9 @@ let send_event_blocking event peer =
   in
   match conn_res with
   | Error _ ->
-      printf "connerr in send_event_blocking: connection failed to peer %s:%d\n" host port |> return
+      printf "connerr in send_event_blocking: connection failed to peer %s:%d\n"
+        host port
+      |> return
   | Ok connection -> dispatch connection
 
 let start_server writer port =

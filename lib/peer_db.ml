@@ -1,4 +1,5 @@
 open Core
+open Async
 
 type 'a t = (Host_and_port.t * 'a) list
 
@@ -21,3 +22,9 @@ let get_value_exn t peer =
   match get_value t peer with
   | Some i -> i
   | None -> failwith "get_value_exn: peer not found"
+
+let majority_have_at_least_n t n =
+  let total = List.length t in
+  let have = List.count t ~f:(fun (_, i) -> i >= n) in
+  printf "have: %d, total: %d\n" have total ;
+  have >= (total / 2) + 1

@@ -143,7 +143,6 @@ let convert_to_candidate t =
     printf "%d: Requesting votes from peers\n" term;
     remote_nodes t |> Deferred.List.iter ~f:(Server_rpc.send_event request)
   in
-  (* let new_state = convert_if_votes new_state in *)
   reset_election_timer t |> return
 
 let update_term_and_convert_if_outdated state term leader =
@@ -177,7 +176,7 @@ let find_peer_exn t host_and_port =
    entries starting at nextIndex *)
 let update_peers state =
   match peer_type state with
-  | Follower _ | Candidate _ -> return ()
+  | Follower _ | Candidate _ -> return state
   | Leader leader_state ->
       let command_log = log state in
       let term = current_term state in
@@ -194,23 +193,29 @@ let update_peers state =
       let log_entries =
         List.map ~f:get_log_entries_after_match_index outdated_peers
       in
-      Deferred.List.iter log_entries ~f:(fun (peer, entries, next_index) ->
-          let prev_log_index = next_index - 1 in
-          let prev_log_term =
-            Command_log.get_term_exn command_log prev_log_index
-          in
-          let leader_commit = commit_index state in
-          let event =
-            Server_rpc.Append_call.create ~term ~prev_log_index ~prev_log_term
-              ~entries ~leader_commit
-            |> Server_rpc.Event.AppendEntriesCall
-          in
-          let from = self state |> Peer.to_host_and_port in
-          let request = Server_rpc.Remote_call.create ~event ~from in
-          printf "%d: Sending append entries to %s from %s\n" term
-            (Peer.to_string peer)
-            (Host_and_port.to_string from);
-          Server_rpc.send_event request peer)
+      let leader_state = Leader.State.update_match_index leader_state (self state |> Peer.to_host_and_port) last_log_index in
+      printf "Set match index for %s to %d\n" (Host_and_port.to_string (self state |> Peer.to_host_and_port)) last_log_index;
+      let state = { state with peer_type = Peer_type.Leader leader_state } in
+      let%bind () =
+        Deferred.List.iter log_entries ~f:(fun (peer, entries, next_index) ->
+            let prev_log_index = next_index - 1 in
+            let prev_log_term =
+              Command_log.get_term_exn command_log prev_log_index
+            in
+            let leader_commit = commit_index state in
+            let event =
+              Server_rpc.Append_call.create ~term ~prev_log_index ~prev_log_term
+                ~entries ~leader_commit
+              |> Server_rpc.Event.AppendEntriesCall
+            in
+            let from = self state |> Peer.to_host_and_port in
+            let request = Server_rpc.Remote_call.create ~event ~from in
+            printf "%d: Sending append entries to %s from %s\n" term
+              (Peer.to_string peer)
+              (Host_and_port.to_string from);
+            Server_rpc.send_event request peer)
+      in
+      return state
 
 (*
  * If leader: Append entries to log, return Ok
@@ -231,7 +236,7 @@ let handle_command_call (state : t) (command : Command_log.Command.t) =
       let state = { state with log } in
       printf "%d: Appended command to log\n" term;
       let state = update_peer_list state in
-      let%bind () = update_peers state in
+      let%bind state = update_peers state in
       Ok state |> return
   | Follower _ -> (
       match leader with
@@ -243,3 +248,33 @@ let handle_command_call (state : t) (command : Command_log.Command.t) =
           let leader_peer = find_peer_exn state leader in
           let%bind () = Server_rpc.send_event request leader_peer in
           return (Ok state))
+
+let n_is_valid_commit_index t leader_state n =
+  let n_term =
+    Command_log.get_index (log t) n
+    |> Option.value_exn |> Command_log.Entry.term
+  in
+  let match_index = Leader.State.match_index leader_state in
+  n > commit_index t && n_term = current_term t && 
+  Peer_db.majority_have_at_least_n match_index n
+
+let find_best_commit_index t =
+  let log = log t in
+  let last_log_index = Command_log.last_index log in
+  let current_commit_index = commit_index t in
+  match peer_type t with
+  | Follower _ | Candidate _ -> current_commit_index
+  | Leader leader_state ->
+      let rec loop n =
+        match n <= current_commit_index with
+        | true -> current_commit_index
+        | false -> (
+            match n_is_valid_commit_index t leader_state n with
+            | true -> n
+            | false -> loop (n - 1))
+      in
+      loop last_log_index
+
+let update_commit_index t =
+  let commit_index = find_best_commit_index t in
+  { t with commit_index }
