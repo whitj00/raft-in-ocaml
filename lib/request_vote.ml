@@ -1,7 +1,7 @@
 open! Core
 open Async
 
-let request_vote peer state call =
+let call_request_vote peer state call =
   let open Or_error.Let_syntax in
   let term = Server_rpc.Request_call.term call in
   let current_term = State.current_term state in
@@ -38,7 +38,7 @@ let request_vote peer state call =
 let handle_request_vote peer state call =
   let term = Server_rpc.Request_call.term call in
   let state = State.update_term_and_convert_if_outdated state term None in
-  let response = request_vote peer state call in
+  let response = call_request_vote peer state call in
   let current_term = State.current_term state in
   let response, state =
     match response with

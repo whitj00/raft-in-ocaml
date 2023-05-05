@@ -54,9 +54,51 @@ let add_peer_from_host_and_port t host_and_port =
   | true -> add_peer t (Peer.create ~host_and_port)
   | false -> t
 
+let remove_peer t (host_and_port : Host_and_port.t) =
+  let peers = peers t in
+  let is_not_in_peers =
+    not
+      (List.mem ~equal:Host_and_port.equal
+         (List.map ~f:Peer.to_host_and_port peers)
+         host_and_port)
+  in
+  match is_not_in_peers with
+  | true -> t
+  | false -> (
+      let peers =
+        List.filter
+          ~f:(fun peer -> not (Peer.equal_host_port peer host_and_port))
+          peers
+      in
+      let t = { t with peers } in
+      match peer_type t with
+      | Follower _ | Candidate _ -> t
+      | Leader leader_state ->
+          let leader_state =
+            Leader.State.remove_peer leader_state host_and_port
+          in
+          { t with peer_type = Peer_type.Leader leader_state })
+
 let update_peer_list t =
   let command_log_peers = Command_log.get_unique_peers (log t) in
-  List.fold ~f:add_peer_from_host_and_port ~init:t command_log_peers
+  let added_peers =
+    List.filter
+      ~f:(fun peer ->
+        not (List.mem ~equal:Host_and_port.equal (List.map ~f:Peer.to_host_and_port (peers t)) peer))
+      command_log_peers
+  in
+  let t = List.fold ~f:add_peer_from_host_and_port ~init:t added_peers in
+  let removed_peers =
+    List.filter
+      ~f:(fun peer ->
+        not (List.mem ~equal:Host_and_port.equal command_log_peers peer))
+      (peers t |> List.map ~f:Peer.to_host_and_port)
+  in
+  let removed_self = List.mem ~equal:Host_and_port.equal removed_peers (self t |> Peer.to_host_and_port) in
+  let is_not_empty_log = not (Command_log.length (log t) = 0) in
+  match removed_self && is_not_empty_log with
+  | true -> failwith "Removed from cluster"
+  | false -> List.fold ~f:(fun t peer -> remove_peer t peer) ~init:t removed_peers
 
 let reset_election_timer t =
   {
@@ -193,8 +235,14 @@ let update_peers state =
       let log_entries =
         List.map ~f:get_log_entries_after_match_index outdated_peers
       in
-      let leader_state = Leader.State.update_match_index leader_state (self state |> Peer.to_host_and_port) last_log_index in
-      printf "Set match index for %s to %d\n" (Host_and_port.to_string (self state |> Peer.to_host_and_port)) last_log_index;
+      let leader_state =
+        Leader.State.update_match_index leader_state
+          (self state |> Peer.to_host_and_port)
+          last_log_index
+      in
+      printf "Set match index for %s to %d\n"
+        (Host_and_port.to_string (self state |> Peer.to_host_and_port))
+        last_log_index;
       let state = { state with peer_type = Peer_type.Leader leader_state } in
       let%bind () =
         Deferred.List.iter log_entries ~f:(fun (peer, entries, next_index) ->
@@ -235,8 +283,8 @@ let handle_command_call (state : t) (command : Command_log.Command.t) =
       let log = Command_log.append_one entry log in
       let state = { state with log } in
       printf "%d: Appended command to log\n" term;
-      let state = update_peer_list state in
       let%bind state = update_peers state in
+      let state = update_peer_list state in
       Ok state |> return
   | Follower _ -> (
       match leader with
@@ -255,8 +303,9 @@ let n_is_valid_commit_index t leader_state n =
     |> Option.value_exn |> Command_log.Entry.term
   in
   let match_index = Leader.State.match_index leader_state in
-  n > commit_index t && n_term = current_term t && 
-  Peer_db.majority_have_at_least_n match_index n
+  n > commit_index t
+  && n_term = current_term t
+  && Peer_db.majority_have_at_least_n match_index n
 
 let find_best_commit_index t =
   let log = log t in

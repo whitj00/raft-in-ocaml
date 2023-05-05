@@ -7,6 +7,7 @@ module State : sig
   val next_index : t -> int Peer_db.t
   val init : peers:Peer.t list -> last_log_index:int -> t
   val add_peer : t -> Host_and_port.t -> last_log_index:int -> t
+  val remove_peer : t -> Host_and_port.t -> t
   val update_next_index : t -> Host_and_port.t -> int -> t
   val update_match_index : t -> Host_and_port.t -> int -> t
   val get_next_index_exn : t -> Peer.t -> int

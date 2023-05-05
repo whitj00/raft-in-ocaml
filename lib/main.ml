@@ -114,6 +114,13 @@ let main ~port ~host ~(bootstrap : Host_and_port.t option) () =
     let host_and_port = Host_and_port.create ~host:hostname ~port in
     Peer.create ~host_and_port
   in
+  let event_pipe = Pipe.create () in
+  let (event_reader, event_writer)
+        : Server_rpc.Remote_call.t Pipe.Reader.t
+          * Server_rpc.Remote_call.t Pipe.Writer.t =
+    event_pipe
+  in
+  let%bind _server_rpc = Server_rpc.start_server event_writer port in
   let local = create_host ~hostname:host ~port in
   let%bind peers =
     match bootstrap with
@@ -150,13 +157,6 @@ let main ~port ~host ~(bootstrap : Host_and_port.t option) () =
     | Some _ ->
         State.create ~peers ~port |> State.convert_to_follower ~leader:None
   in
-  let event_pipe = Pipe.create () in
-  let (event_reader, event_writer)
-        : Server_rpc.Remote_call.t Pipe.Reader.t
-          * Server_rpc.Remote_call.t Pipe.Writer.t =
-    event_pipe
-  in
-  let%bind _server_rpc = Server_rpc.start_server event_writer port in
   let self = State.self server_state |> Peer.to_host_and_port in
   let%bind _client_rpc =
     Client_rpc.start_server self event_writer (port + 1000)

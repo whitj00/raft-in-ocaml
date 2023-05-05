@@ -34,13 +34,6 @@ module Request_response = struct
   let create = Fields.create
 end
 
-module Add_server_call = struct
-  type t = { term : int; host_and_port : Host_and_port.t }
-  [@@deriving fields, bin_io, sexp]
-
-  let create = Fields.create
-end
-
 module Event = struct
   type t =
     | RequestVoteCall of Request_call.t

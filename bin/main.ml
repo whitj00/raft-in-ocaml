@@ -40,12 +40,24 @@ let add_server =
        Raft.Client_rpc.send_command
          (Raft.Command_log.Command.AddServer new_server) host_and_port)
 
+let remove_server =
+  Command.async ~summary:"Send a message to a raft server"
+    (let%map_open.Command host_and_port =
+       flag "-node" (required host_and_port) ~doc:" host to connect to"
+     and server =
+       flag "-server" (required host_and_port) ~doc:" host to remove"
+     in
+     fun () ->
+       Raft.Client_rpc.send_command
+         (Raft.Command_log.Command.RemoveServer server) host_and_port)
+
 let client =
   Command.group ~summary:"Client commands"
     [
       ("increment", increment);
       ("decrement", decrement);
       ("add-server", add_server);
+      ("remove-server", remove_server);
     ]
 
 let () =

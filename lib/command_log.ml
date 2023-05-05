@@ -2,7 +2,11 @@ open Core
 open! Async
 
 module Command = struct
-  type t = Increment | Decrement | AddServer of Host_and_port.t
+  type t =
+    | Increment
+    | Decrement
+    | AddServer of Host_and_port.t
+    | RemoveServer of Host_and_port.t
   [@@deriving bin_io, sexp]
 end
 
@@ -15,6 +19,7 @@ module State_machine = struct
     | Command.Increment -> t + 1
     | Command.Decrement -> t - 1
     | AddServer _ -> t
+    | RemoveServer _ -> t
 end
 
 module Entry = struct
@@ -34,6 +39,7 @@ let get_unique_peers t =
   List.fold t ~init:start_set ~f:(fun acc entry ->
       match Entry.command entry with
       | AddServer peer -> Set.add acc peer
+      | RemoveServer peer -> Set.remove acc peer
       | _ -> acc)
   |> Set.to_list
 

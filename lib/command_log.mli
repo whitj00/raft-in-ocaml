@@ -1,7 +1,11 @@
 open Core
 
 module Command : sig
-  type t = Increment | Decrement | AddServer of Host_and_port.t
+  type t =
+    | Increment
+    | Decrement
+    | AddServer of Host_and_port.t
+    | RemoveServer of Host_and_port.t
   [@@deriving bin_io, sexp]
 end
 

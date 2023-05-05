@@ -16,6 +16,12 @@ module State = struct
       match_index = Peer_db.add_peer t.match_index peer 0;
     }
 
+  let remove_peer t (peer : Host_and_port.t) =
+    {
+      next_index = Peer_db.remove_peer t.next_index peer;
+      match_index = Peer_db.remove_peer t.match_index peer;
+    }
+
   let update_next_index t peer index =
     { t with next_index = Peer_db.update_value t.next_index peer index }
 

@@ -29,4 +29,5 @@ let host t = t.host_and_port.host
 let port t = t.host_and_port.port
 let to_host_and_port t = t.host_and_port
 let equal t1 t2 = Host_and_port.equal t1.host_and_port t2.host_and_port
+let equal_host_port t1 hp1 = Host_and_port.equal t1.host_and_port hp1
 let to_string t = t.host_and_port |> Host_and_port.to_string
