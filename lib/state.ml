@@ -124,9 +124,9 @@ let convert_if_votes t =
 
 let convert_to_candidate t =
   let current_term = current_term t + 1 in
-  print_endline "-----------------";
+  printf "----------------------------------\n";
   printf "%d: Converting to candidate\n" current_term;
-  print_endline "-----------------";
+  printf "----------------------------------\n";
   let voted_for = Some (self t) in
   let peer_type = Candidate.State.init (self t) |> Peer_type.Candidate in
   let t = { t with current_term; voted_for; peer_type } in
