@@ -84,7 +84,10 @@ let update_peer_list t =
   let added_peers =
     List.filter
       ~f:(fun peer ->
-        not (List.mem ~equal:Host_and_port.equal (List.map ~f:Peer.to_host_and_port (peers t)) peer))
+        not
+          (List.mem ~equal:Host_and_port.equal
+             (List.map ~f:Peer.to_host_and_port (peers t))
+             peer))
       command_log_peers
   in
   let t = List.fold ~f:add_peer_from_host_and_port ~init:t added_peers in
@@ -94,11 +97,15 @@ let update_peer_list t =
         not (List.mem ~equal:Host_and_port.equal command_log_peers peer))
       (peers t |> List.map ~f:Peer.to_host_and_port)
   in
-  let removed_self = List.mem ~equal:Host_and_port.equal removed_peers (self t |> Peer.to_host_and_port) in
+  let removed_self =
+    List.mem ~equal:Host_and_port.equal removed_peers
+      (self t |> Peer.to_host_and_port)
+  in
   let is_not_empty_log = not (Command_log.length (log t) = 0) in
   match removed_self && is_not_empty_log with
   | true -> failwith "Removed from cluster"
-  | false -> List.fold ~f:(fun t peer -> remove_peer t peer) ~init:t removed_peers
+  | false ->
+      List.fold ~f:(fun t peer -> remove_peer t peer) ~init:t removed_peers
 
 let reset_election_timer t =
   {
