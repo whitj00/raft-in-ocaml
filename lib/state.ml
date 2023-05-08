@@ -18,10 +18,10 @@ type t = {
 }
 [@@deriving fields]
 
-let create_heartbeat_timer () = Time.Span.of_sec 0.5
+let create_heartbeat_timer () = Time.Span.of_sec 0.0
 let set_heartbeat_timer t time = { t with last_hearbeat = time }
 let reset_timer t = set_heartbeat_timer t (Time.now ())
-let get_election_timeout () = Time.Span.of_sec (Random.float_range 3.0 6.0)
+let get_election_timeout () = Time.Span.of_sec (Random.float_range 1.0 2.0)
 
 let remote_nodes t =
   let self = self t in

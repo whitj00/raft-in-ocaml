@@ -29,15 +29,11 @@ let handle_election_timeout state =
   Ok state |> return
 
 let get_heartbeat_timeout state =
-  let started_at = State.started_at state in
-  let time_since_start = Time.diff (Time.now ()) started_at in
-  if Time.Span.(time_since_start < of_sec 5.) then Time.Span.of_sec 10.
-  else
-    let now = Time.now () in
-    let heartbeat_timer = State.heartbeat_timeout state in
-    let last_heartbeat = State.last_hearbeat state in
-    let time_since_last_heartbeat = Time.diff now last_heartbeat in
-    Time.Span.(heartbeat_timer - time_since_last_heartbeat)
+  let now = Time.now () in
+  let heartbeat_timer = State.heartbeat_timeout state in
+  let last_heartbeat = State.last_hearbeat state in
+  let time_since_last_heartbeat = Time.diff now last_heartbeat in
+  Time.Span.(heartbeat_timer - time_since_last_heartbeat)
 
 let rec get_next_event pipe_reader state =
   let%bind () = Clock.after (Time.Span.of_sec 0.5) in
@@ -78,10 +74,9 @@ let handle_event host_and_port state event =
       | None -> Peer.create ~host_and_port
       | Some peer -> peer
     in
-    let conn = Peer.conn peer |> Option.value_exn in
-    (* Connect to the peer *)
     let%bind _ =
-      Persistent_connection.Rpc.connected_or_failed_to_connect conn
+      Peer.conn peer |> Option.value_exn
+      |> Persistent_connection.Rpc.connected_or_failed_to_connect
     in
     return peer
   in
