@@ -5,7 +5,7 @@ let rec read_from_pipe pipe_reader =
   let%bind response = Pipe.read pipe_reader in
   match response with
   | `Eof -> read_from_pipe pipe_reader
-  | `Ok remote_call -> Deferred.return remote_call
+  | `Ok remote_call -> return remote_call
 
 let get_election_timeout state =
   let election_timer = State.election_timeout state in
