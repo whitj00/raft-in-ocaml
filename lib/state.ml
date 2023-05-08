@@ -18,7 +18,7 @@ type t = {
 }
 [@@deriving fields]
 
-let create_heartbeat_timer () = Time.Span.of_sec 0.0
+let create_heartbeat_timer () = Time.Span.of_sec 0.25
 let set_heartbeat_timer t time = { t with last_hearbeat = time }
 let reset_timer t = set_heartbeat_timer t (Time.now ())
 let get_election_timeout () = Time.Span.of_sec (Random.float_range 1.0 2.0)

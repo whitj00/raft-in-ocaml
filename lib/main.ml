@@ -36,30 +36,37 @@ let get_heartbeat_timeout state =
   Time.Span.(heartbeat_timer - time_since_last_heartbeat)
 
 let rec get_next_event pipe_reader state =
-  let%bind () = Clock.after (Time.Span.of_sec 0.5) in
-  let election_timeout = get_election_timeout state in
-  let heartbeat_timeout = get_heartbeat_timeout state in
-  let uses_heartbeat =
+  (* Scheduler is only triggered when we've recieved events *)
+  let%bind () = Scheduler.yield () in
+  let is_leader =
     match State.peer_type state with
     | Leader _ -> true
     | Candidate _ -> false
     | Follower _ -> false
   in
-  if Pipe.length pipe_reader > 0 then
-    let%bind response = read_from_pipe pipe_reader in
-    Deferred.return response
-  else if
-    (not uses_heartbeat) && Time.Span.(election_timeout < Time.Span.of_sec 0.)
-  then
-    let event = Server_rpc.Event.ElectionTimeout in
-    let from = State.self state |> Peer.to_host_and_port in
-    Deferred.return { Server_rpc.Remote_call.event; from }
-  else if uses_heartbeat && Time.Span.(heartbeat_timeout < Time.Span.of_sec 0.)
-  then
-    let event = Server_rpc.Event.HeartbeatTimeout in
-    let from = State.self state |> Peer.to_host_and_port in
-    Deferred.return { Server_rpc.Remote_call.event; from }
-  else get_next_event pipe_reader state
+  let should_election_timeout =
+    (not is_leader) && Time.Span.(get_election_timeout state < Time.Span.of_sec 0.)
+  in
+  let should_heartbeat =
+    is_leader && Time.Span.(get_heartbeat_timeout state < Time.Span.of_sec 0.)
+  in
+  match Pipe.length pipe_reader > 0 with
+  | true ->
+      let%bind response = read_from_pipe pipe_reader in
+      return response
+  | false -> (
+      match should_election_timeout with
+      | true ->
+          let event = Server_rpc.Event.ElectionTimeout in
+          let from = State.self state |> Peer.to_host_and_port in
+          Deferred.return { Server_rpc.Remote_call.event; from }
+      | false -> (
+          match should_heartbeat with
+          | true ->
+              let event = Server_rpc.Event.HeartbeatTimeout in
+              let from = State.self state |> Peer.to_host_and_port in
+              return { Server_rpc.Remote_call.event; from }
+          | false -> get_next_event pipe_reader state))
 
 let handle_event host_and_port state event =
   let state = State.convert_if_votes state |> State.update_peer_list in
