@@ -45,7 +45,8 @@ let rec get_next_event pipe_reader state =
     | Follower _ -> false
   in
   let should_election_timeout =
-    (not is_leader) && Time.Span.(get_election_timeout state < Time.Span.of_sec 0.)
+    (not is_leader)
+    && Time.Span.(get_election_timeout state < Time.Span.of_sec 0.)
   in
   let should_heartbeat =
     is_leader && Time.Span.(get_heartbeat_timeout state < Time.Span.of_sec 0.)
